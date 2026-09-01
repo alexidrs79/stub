@@ -2,9 +2,9 @@ import { useQuery } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { ApiError, fetchJson } from "./api"
-import { MediaImage } from "./MediaImage"
 import { setPageMeta } from "./pageMeta"
-import { genrePath, slugify, titlePath } from "./paths"
+import { genrePath, slugify } from "./paths"
+import { PosterCard } from "./PosterRail"
 import type { ArchiveEntry, GenreCatalog, GenreInfo, SearchHit } from "./title"
 import { titleKey } from "./title"
 
@@ -35,51 +35,19 @@ function PosterGrid({
 
   return (
     <div className="genre-posters">
-      {titles.map((item, index) => {
-        const saved = savedByKey.get(titleKey(item))
-        return (
-          <article key={titleKey(item)} className="poster-card">
-            <Link to={titlePath(item)}>
-              <div className="poster-frame relative overflow-hidden border border-border bg-surface">
-                <MediaImage
-                  src={item.posterUrl}
-                  alt={`${item.title} poster`}
-                  className="poster w-full"
-                  imageClassName="object-cover"
-                  fallback="NO POSTER"
-                  loading={index < 12 ? "eager" : "lazy"}
-                />
-                {signedIn && saved && (
-                  <span className={`poster-status is-${saved.status}`}>
-                    {saved.status === "watched"
-                      ? "STAMPED"
-                      : saved.status === "watching"
-                        ? "WATCHING"
-                        : "WATCHLIST"}
-                  </span>
-                )}
-              </div>
-              <h3 className="mt-3 line-clamp-2 min-h-10 text-[14px] font-semibold leading-5 text-text">
-                {item.title}
-              </h3>
-              <p className="mt-1 font-mono text-[11px] text-text-dim">
-                {item.year ?? "—"}
-                {item.voteAverage != null ? ` · ${item.voteAverage.toFixed(1)}` : ""}
-                {` · ${item.mediaType.toUpperCase()}`}
-              </p>
-            </Link>
-            {signedIn && !saved && (
-              <button
-                type="button"
-                className="poster-save"
-                onClick={() => onSave(item)}
-              >
-                + WATCHLIST
-              </button>
-            )}
-          </article>
-        )
-      })}
+      {titles.map((item, index) => (
+        <PosterCard
+          key={titleKey(item)}
+          title={item}
+          saved={savedByKey.get(titleKey(item))}
+          onSave={onSave}
+          showStatus={signedIn}
+          meta={`${item.year ?? "—"}${
+            item.voteAverage != null ? ` · ${item.voteAverage.toFixed(1)}` : ""
+          } · ${item.mediaType.toUpperCase()}`}
+          loading={index < 12 ? "eager" : "lazy"}
+        />
+      ))}
     </div>
   )
 }

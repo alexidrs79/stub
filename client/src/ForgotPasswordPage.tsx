@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react"
 import { Link } from "react-router-dom"
 import { fetchJson } from "./api"
-import { AuthShell, Field } from "./AuthShell"
+import { AuthShell, Field, FormError } from "./AuthShell"
 
 export function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
@@ -62,11 +62,7 @@ export function ForgotPasswordPage() {
               className="field-input"
             />
           </Field>
-          {message && (
-            <p className="text-body-sm text-stamp" role="alert">
-              {message}
-            </p>
-          )}
+          <FormError>{message}</FormError>
           <button
             type="submit"
             disabled={busy}

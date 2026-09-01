@@ -22,6 +22,7 @@ import type {
   TitleDetail,
 } from "./title"
 import { titleKey } from "./title"
+import { invalidatePagedViews } from "./useArchive"
 
 type DetailPageProps = {
   archive: ArchiveEntry[]
@@ -134,8 +135,7 @@ export function DetailPage({
         body: JSON.stringify({ tmdbId, mediaType }),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["lists"] })
-      queryClient.invalidateQueries({ queryKey: ["list", selectedList] })
+      invalidatePagedViews(queryClient)
       setActionMessage("ADDED TO LIST")
     },
     onError: (error) => {

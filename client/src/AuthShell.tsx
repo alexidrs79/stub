@@ -55,6 +55,16 @@ export function AuthShell({
   )
 }
 
+export function TicketCheck() {
+  return (
+    <main className="py-24">
+      <p className="font-mono text-[11px] tracking-[0.08em] text-text-dim">
+        CHECKING YOUR TICKET
+      </p>
+    </main>
+  )
+}
+
 export function Field({
   label,
   children,
@@ -69,5 +79,14 @@ export function Field({
       </span>
       <div className="mt-2">{children}</div>
     </label>
+  )
+}
+
+export function FormError({ children }: { children: ReactNode }) {
+  if (!children) return null
+  return (
+    <p className="text-body-sm text-stamp" role="alert">
+      {children}
+    </p>
   )
 }

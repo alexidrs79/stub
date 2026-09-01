@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { fetchJson } from "./api"
-import { AuthShell, Field } from "./AuthShell"
+import { AuthShell, Field, FormError } from "./AuthShell"
 
 export function ResetPasswordPage() {
   const [params] = useSearchParams()
@@ -97,11 +97,7 @@ export function ResetPasswordPage() {
               className="field-input"
             />
           </Field>
-          {message && (
-            <p className="text-body-sm text-stamp" role="alert">
-              {message}
-            </p>
-          )}
+          <FormError>{message}</FormError>
           <button
             type="submit"
             disabled={busy}

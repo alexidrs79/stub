@@ -4,6 +4,9 @@ import { fetchTitleCard, type MediaType, type TitleCard } from "./tmdb.js"
 
 export type TitleRef = { tmdbId: number; mediaType: MediaType }
 
+type TitleCardFetcher = typeof fetchTitleCard
+let fetchCard: TitleCardFetcher = fetchTitleCard
+
 /// How long a stored card is served without asking TMDb again. Card data is
 /// title, year, runtime, artwork and season counts — none of it moves often.
 const FRESH_FOR = 7 * 24 * 60 * 60 * 1000
@@ -137,7 +140,7 @@ export async function getTitleCards(
 
   await mapWithConcurrency([...wanted.entries()], FETCH_CONCURRENCY, async ([key, ref]) => {
     try {
-      const card = await fetchTitleCard(ref.mediaType, ref.tmdbId)
+      const card = await fetchCard(ref.mediaType, ref.tmdbId)
       resolved.set(key, card)
       rememberInMemory(card)
       await store(card)
@@ -163,7 +166,7 @@ export async function getTitleCard(
  * placeholder. Callers that validate against live data — season and episode
  * bounds, say — must not treat an empty placeholder as truth.
  */
-export async function requireTitleCard(
+async function requireTitleCard(
   mediaType: MediaType,
   id: number,
 ): Promise<TitleCard> {
@@ -180,13 +183,94 @@ export async function requireTitleCard(
     return card
   }
 
-  const card = await fetchTitleCard(mediaType, id)
+  const card = await fetchCard(mediaType, id)
   rememberInMemory(card)
   await store(card)
   return card
 }
 
+/**
+ * Always asks TMDb and replaces the stored card. Progress validation uses this
+ * when a season or episode is missing from a still-fresh cache — weekly shows
+ * add episodes faster than the seven-day window.
+ */
+async function refreshTitleCard(
+  mediaType: MediaType,
+  id: number,
+): Promise<TitleCard> {
+  const card = await fetchCard(mediaType, id)
+  rememberInMemory(card)
+  await store(card)
+  return card
+}
+
+export function episodeFitsSeasonOptions(
+  seasonOptions: TitleCard["seasonOptions"],
+  season: number,
+  episode: number,
+) {
+  const selected = seasonOptions.find((option) => option.season === season)
+  if (!selected) {
+    return {
+      ok: false as const,
+      error: "That season is not available for this show.",
+    }
+  }
+  if (episode > selected.episodeCount) {
+    return {
+      ok: false as const,
+      error: `Season ${season} has ${selected.episodeCount} episodes.`,
+    }
+  }
+  return { ok: true as const }
+}
+
+/**
+ * Season counts on a card can lag a currently airing show. Try the cache
+ * first; if that episode is not listed, refetch once before rejecting.
+ */
+export async function requireSeasonOptionsForProgress(
+  tmdbId: number,
+  season: number,
+  episode: number,
+) {
+  let card: TitleCard
+  try {
+    card = await requireTitleCard("tv", tmdbId)
+  } catch {
+    return {
+      ok: false as const,
+      status: 503 as const,
+      error: "Episode data is unavailable. Try again before saving progress.",
+    }
+  }
+
+  if (episodeFitsSeasonOptions(card.seasonOptions, season, episode).ok) {
+    return { ok: true as const, seasonOptions: card.seasonOptions }
+  }
+
+  try {
+    card = await refreshTitleCard("tv", tmdbId)
+  } catch {
+    return {
+      ok: false as const,
+      status: 503 as const,
+      error: "Episode data is unavailable. Try again before saving progress.",
+    }
+  }
+
+  const refreshed = episodeFitsSeasonOptions(card.seasonOptions, season, episode)
+  if (refreshed.ok) {
+    return { ok: true as const, seasonOptions: card.seasonOptions }
+  }
+  return { ok: false as const, status: 400 as const, error: refreshed.error }
+}
+
 /** Test seam. */
 export function clearTitleCacheMemory() {
   memory.clear()
+}
+
+export function setTitleCardFetcherForTests(fn: TitleCardFetcher | null) {
+  fetchCard = fn ?? fetchTitleCard
 }

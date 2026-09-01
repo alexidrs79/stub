@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState, type FormEvent } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { fetchJson } from "./api"
+import { Pager } from "./Pager"
 import { TicketStub } from "./TicketStub"
 import { TvProgressEditor } from "./TvProgressEditor"
 import { setPageMeta } from "./pageMeta"
@@ -15,7 +16,7 @@ import type {
   MediaType,
   SavedTitle,
 } from "./title"
-import { useArchivePage } from "./useArchive"
+import { invalidatePagedViews, useArchivePage } from "./useArchive"
 
 type CollectionPageProps = {
   onMarkWatched: (tmdbId: number, mediaType: MediaType, name: string) => void
@@ -29,7 +30,7 @@ type CollectionPageProps = {
 
 type Filter = "all" | MediaType
 
-const PAGE_SIZE = 48
+const PAGE_SIZE = 24
 
 const views = [
   {
@@ -146,45 +147,36 @@ export function CollectionPage({
       }),
     onSuccess: () => {
       setConfirmingListRemoval(null)
-      queryClient.invalidateQueries({ queryKey: ["list", listId] })
-      queryClient.invalidateQueries({ queryKey: ["lists"] })
+      invalidatePagedViews(queryClient)
     },
   })
 
-  const isView = !listId && (views as readonly { id: string }[]).some(
-    (item) => item.id === view,
-  )
+  const isView = (views as readonly { id: string }[]).some((item) => item.id === view)
   // Page 4 of one sort is not page 4 of the next, so changing the view, sort,
   // or filter starts over. Derived rather than reset in an effect.
   const scope = `${listRef ?? view}|${sort}|${filter}`
   const pageNumber = pager.scope === scope ? pager.page : 1
   const goToPage = (next: number) => setPager({ scope, page: Math.max(1, next) })
-  // The default views page and sort on the server; a custom list is small
-  // enough to arrive whole and is arranged here.
-  const archivePage = useArchivePage(view as ArchiveView, {
+  // Custom lists page and sort through the same route as the default views.
+  const archivePage = useArchivePage(listId ? { list: listId } : (view as ArchiveView), {
     page: pageNumber,
     pageSize: PAGE_SIZE,
     sort,
     mediaType: filter === "all" ? null : filter,
-    enabled: isView,
+    enabled: Boolean(listId) || isView,
   })
 
-  const customTitles = (custom.data?.titles ?? [])
-    .filter((title) => filter === "all" || title.mediaType === filter)
-    .sort((a, b) => {
-      if (sort === "title") return a.title.localeCompare(b.title)
-      if (sort === "year") return (b.year ?? 0) - (a.year ?? 0)
-      if (sort === "score") return (b.score ?? -1) - (a.score ?? -1)
-      return (
-        new Date(b.lastWatchedAt ?? b.savedAt).getTime() -
-        new Date(a.lastWatchedAt ?? a.savedAt).getTime()
-      )
-    })
-
-  const visible = listId ? customTitles : (archivePage.data?.titles ?? [])
-  const total = listId ? customTitles.length : (archivePage.data?.total ?? 0)
-  const hasMore = listId ? false : Boolean(archivePage.data?.hasMore)
+  const visible = archivePage.data?.titles ?? []
+  const total = archivePage.data?.total ?? 0
   const filtered = filter !== "all"
+
+  // Removing titles can strand the reader past the end of a shrunken
+  // collection, where the empty state would wrongly claim it holds nothing.
+  // Corrected while rendering so no blank page is ever shown.
+  if (visible.length === 0 && total > 0) {
+    const lastPage = Math.ceil(total / PAGE_SIZE)
+    if (lastPage < pageNumber) goToPage(lastPage)
+  }
 
   const activeView = views.find((item) => item.id === view) ?? views[0]
   const currentLabel = listId
@@ -200,8 +192,7 @@ export function CollectionPage({
       }
     : activeView
   const pageLoading =
-    collections.isLoading ||
-    (listId ? custom.isLoading : archivePage.isLoading)
+    collections.isLoading || archivePage.isLoading || (listId ? custom.isLoading : false)
   const pageError = collections.isError || custom.isError || archivePage.isError
   const listActionError =
     renameList.error ?? deleteList.error ?? removeFromList.error
@@ -300,7 +291,7 @@ export function CollectionPage({
           <div className="collection-toolbar">
             <div>
               <h2>{currentLabel}</h2>
-              <p>{visible.length} {visible.length === 1 ? "TITLE" : "TITLES"}</p>
+              <p>{total} {total === 1 ? "TITLE" : "TITLES"}</p>
             </div>
             <label>
               <span className="sr-only">Media type</span>
@@ -393,8 +384,8 @@ export function CollectionPage({
                 className="button-primary"
                 onClick={() => {
                   void collections.refetch()
+                  void archivePage.refetch()
                   if (listId) void custom.refetch()
-                  else void archivePage.refetch()
                 }}
               >
                 Retry
@@ -481,32 +472,18 @@ export function CollectionPage({
             </div>
           )}
 
-          {!pageLoading && !pageError && visible.length > 0 && !listId && total > PAGE_SIZE && (
-            <nav className="collection-pager" aria-label="Collection pages">
-              <button
-                type="button"
-                className="button-outline"
-                disabled={pageNumber === 1 || archivePage.isFetching}
-                onClick={() => goToPage(pageNumber - 1)}
-              >
-                ← NEWER
-              </button>
-              <p aria-live="polite">
-                {(pageNumber - 1) * PAGE_SIZE + 1}–{(pageNumber - 1) * PAGE_SIZE + visible.length}{" "}
-                OF{" "}
-                {total}
-              </p>
-              <button
-                type="button"
-                className="button-outline"
-                disabled={!hasMore || archivePage.isFetching}
-                onClick={() => goToPage(pageNumber + 1)}
-              >
-                OLDER →
-              </button>
-            </nav>
+          {!pageLoading && !pageError && visible.length > 0 && (
+            <Pager
+              label="Collection pages"
+              page={archivePage.data?.page ?? pageNumber}
+              pageSize={archivePage.data?.pageSize ?? PAGE_SIZE}
+              shown={visible.length}
+              total={total}
+              hasMore={Boolean(archivePage.data?.hasMore)}
+              busy={archivePage.isFetching}
+              onPage={goToPage}
+            />
           )}
-
         </section>
       </div>
     </main>

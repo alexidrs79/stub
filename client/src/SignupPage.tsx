@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react"
 import { Link, Navigate, useNavigate } from "react-router-dom"
-import { AuthShell, Field } from "./AuthShell"
+import { AuthShell, Field, FormError, TicketCheck } from "./AuthShell"
 import { useAuth } from "./auth"
 
 export function SignupPage() {
@@ -13,15 +13,7 @@ export function SignupPage() {
   const [error, setError] = useState("")
   const [busy, setBusy] = useState(false)
 
-  if (loading) {
-    return (
-      <main className="py-24">
-        <p className="font-mono text-[11px] tracking-[0.08em] text-text-dim">
-          CHECKING YOUR TICKET
-        </p>
-      </main>
-    )
-  }
+  if (loading) return <TicketCheck />
 
   if (user) {
     return <Navigate to="/" replace />
@@ -110,11 +102,7 @@ export function SignupPage() {
             className="field-input"
           />
         </Field>
-        {error && (
-          <p className="text-body-sm text-stamp" role="alert">
-            {error}
-          </p>
-        )}
+        <FormError>{error}</FormError>
         <button
           type="submit"
           disabled={busy}

@@ -9,47 +9,21 @@ import {
   listArchiveItems,
   savedOne,
 } from "./archive.js"
+import {
+  parseMediaType,
+  parseNote,
+  parsePage,
+  parsePageSize,
+  parseScore,
+  parseTitleRef,
+} from "./http.js"
 import { getTitleCards } from "./title-cache.js"
-import type { MediaType } from "./tmdb.js"
 import {
   removeFromArchive,
   transitionToWatched,
   transitionToWatchlist,
   updateWatchedVerdict,
 } from "./watch-state.js"
-
-function parseRef(body: { tmdbId?: unknown; mediaType?: unknown } | undefined) {
-  if (typeof body?.tmdbId !== "number") return null
-  const tmdbId = body.tmdbId
-  const mediaType = body?.mediaType
-  if (!Number.isInteger(tmdbId) || tmdbId <= 0) return null
-  if (mediaType !== "movie" && mediaType !== "tv") return null
-  return { tmdbId, mediaType: mediaType as MediaType }
-}
-
-function parseMediaTypeValue(value: unknown) {
-  return value === "movie" || value === "tv" ? value : null
-}
-
-function parsePathRef(mediaType: string, id: string) {
-  const tmdbId = Number(id)
-  if (
-    (mediaType !== "movie" && mediaType !== "tv") ||
-    !Number.isSafeInteger(tmdbId) ||
-    tmdbId <= 0
-  ) {
-    return null
-  }
-  return { tmdbId, mediaType: mediaType as MediaType }
-}
-
-function parseNote(value: unknown) {
-  if (value == null || value === "") return { valid: true, note: null }
-  if (typeof value !== "string") return { valid: false, note: null }
-  const note = value.trim()
-  if (note.length > 140) return { valid: false, note: null }
-  return { valid: true, note: note || null }
-}
 
 const VIEWS = ["watchlist", "watching", "watched", "favorites"] as const
 type ArchiveView = (typeof VIEWS)[number]
@@ -61,24 +35,8 @@ type ArchiveSort = (typeof SORTS)[number]
 /// cache for the matching set. The other two sort on archive fields alone.
 const CARD_SORTS: ArchiveSort[] = ["title", "year"]
 
-const DEFAULT_PAGE_SIZE = 48
-const MAX_PAGE_SIZE = 100
+const DEFAULT_PAGE_SIZE = 24
 
-function parsePageSize(value: unknown) {
-  if (value == null || value === "") return DEFAULT_PAGE_SIZE
-  const size = Number(value)
-  if (!Number.isInteger(size) || size < 1) return null
-  return Math.min(size, MAX_PAGE_SIZE)
-}
-
-function parsePage(value: unknown) {
-  if (value == null || value === "") return 1
-  const page = Number(value)
-  return Number.isInteger(page) && page >= 1 ? page : null
-}
-
-/// Collapses the three default lists into one row per title. A title can sit in
-/// more than one during a transition, and the furthest-along status wins.
 /**
  * The whole archive without artwork. Every page uses this to mark titles the
  * user already saved, so it has to stay cheap: no upstream calls, no paging.
@@ -91,16 +49,18 @@ export async function listArchiveIndex(req: Request, res: Response) {
 
 /**
  * One page of a collection view, with artwork. Paged because hydrating is the
- * only part of the archive that costs anything.
+ * only part of the archive that costs anything. `list` pages a custom list
+ * instead of a default view; both draw from the same archive entries.
  */
 export async function listTitles(req: Request, res: Response) {
   const userId = await requireUser(req, res)
   if (!userId) return
 
+  const listId = typeof req.query.list === "string" ? req.query.list : null
   const view = (req.query.view || "watchlist") as ArchiveView
   const sort = (req.query.sort || "added") as ArchiveSort
   const mediaFilter = req.query.mediaType
-  if (!VIEWS.includes(view)) {
+  if (!listId && !VIEWS.includes(view)) {
     res.status(400).json({ error: "Unknown view." })
     return
   }
@@ -108,20 +68,34 @@ export async function listTitles(req: Request, res: Response) {
     res.status(400).json({ error: "Unknown sort." })
     return
   }
-  if (mediaFilter != null && mediaFilter !== "" && !parseMediaTypeValue(mediaFilter)) {
+  if (mediaFilter != null && mediaFilter !== "" && !parseMediaType(mediaFilter)) {
     res.status(400).json({ error: "Bad media type." })
     return
   }
   const page = parsePage(req.query.page)
-  const pageSize = parsePageSize(req.query.pageSize)
+  const pageSize = parsePageSize(req.query.pageSize, DEFAULT_PAGE_SIZE)
   if (page == null || pageSize == null) {
     res.status(400).json({ error: "Bad page." })
     return
   }
+  if (listId) {
+    const owned = await prisma.list.findFirst({
+      where: { id: listId, userId, type: "custom" },
+      select: { id: true },
+    })
+    if (!owned) {
+      res.status(404).json({ error: "List not found." })
+      return
+    }
+  }
 
   const entries = await buildArchiveEntries(userId, await listArchiveItems(userId))
   const matching = entries.filter((entry) => {
-    if (view === "favorites" ? !entry.favorite : entry.status !== view) return false
+    if (listId) {
+      if (!entry.customListIds.includes(listId)) return false
+    } else if (view === "favorites" ? !entry.favorite : entry.status !== view) {
+      return false
+    }
     return !mediaFilter || entry.mediaType === mediaFilter
   })
 
@@ -161,7 +135,7 @@ export async function listTitles(req: Request, res: Response) {
 export async function addToWatchlist(req: Request, res: Response) {
   const userId = await requireUser(req, res)
   if (!userId) return
-  const ref = parseRef(req.body)
+  const ref = parseTitleRef(req.body)
   if (!ref) {
     res.status(400).json({ error: "Bad title" })
     return
@@ -180,18 +154,11 @@ export async function addToWatchlist(req: Request, res: Response) {
 export async function markWatched(req: Request, res: Response) {
   const userId = await requireUser(req, res)
   if (!userId) return
-  const ref = parseRef(req.body)
-  const score = typeof req.body?.score === "number" ? req.body.score : Number.NaN
+  const ref = parseTitleRef(req.body)
+  const score = parseScore(req.body?.score)
   const parsedNote = parseNote(req.body?.note)
   const parsedDate = parseWatchedAt(req.body?.watchedAt)
-  if (
-    !ref ||
-    !Number.isInteger(score) ||
-    score < 1 ||
-    score > 10 ||
-    !parsedNote.valid ||
-    !parsedDate.valid
-  ) {
+  if (!ref || score == null || !parsedNote.valid || !parsedDate.valid) {
     res.status(400).json({
       error: !parsedNote.valid
         ? "Notes can contain up to 140 characters."
@@ -217,7 +184,10 @@ export async function markWatched(req: Request, res: Response) {
 export async function removeTitle(req: Request, res: Response) {
   const userId = await requireUser(req, res)
   if (!userId) return
-  const ref = parsePathRef(String(req.params.mediaType), String(req.params.id))
+  const ref = parseTitleRef({
+    tmdbId: req.params.id,
+    mediaType: req.params.mediaType,
+  })
   if (!ref) {
     res.status(400).json({ error: "Bad title" })
     return
@@ -229,16 +199,10 @@ export async function removeTitle(req: Request, res: Response) {
 export async function rateTitle(req: Request, res: Response) {
   const userId = await requireUser(req, res)
   if (!userId) return
-  const ref = parseRef(req.body)
-  const score = typeof req.body?.score === "number" ? req.body.score : Number.NaN
+  const ref = parseTitleRef(req.body)
+  const score = parseScore(req.body?.score)
   const parsedNote = parseNote(req.body?.note)
-  if (
-    !ref ||
-    !Number.isInteger(score) ||
-    score < 1 ||
-    score > 10 ||
-    !parsedNote.valid
-  ) {
+  if (!ref || score == null || !parsedNote.valid) {
     res.status(400).json({
       error: parsedNote.valid
         ? "Score must be a whole number from 1 to 10."

@@ -5,6 +5,68 @@ import { titlePath } from "./paths"
 import type { ArchiveEntry, SearchHit } from "./title"
 import { titleKey } from "./title"
 
+function statusLabel(status: ArchiveEntry["status"]) {
+  return status === "watched" ? "STAMPED" : status === "watching" ? "WATCHING" : "WATCHLIST"
+}
+
+export function PosterCard({
+  title,
+  saved,
+  onSave,
+  showStatus = false,
+  meta,
+  className = "poster-card",
+  loading = "lazy",
+  fetchPriority = "auto",
+}: {
+  title: SearchHit
+  saved?: ArchiveEntry
+  onSave?: (title: SearchHit) => void
+  showStatus?: boolean
+  meta: string
+  className?: string
+  loading?: "eager" | "lazy"
+  fetchPriority?: "high" | "low" | "auto"
+}) {
+  return (
+    <article className={className}>
+      <Link to={titlePath(title)}>
+        <div className="poster-frame relative overflow-hidden border border-border bg-surface">
+          <MediaImage
+            src={title.posterUrl}
+            alt={`${title.title} poster`}
+            className="poster w-full"
+            imageClassName="object-cover"
+            fallback="NO POSTER"
+            loading={loading}
+            fetchPriority={fetchPriority}
+          />
+          {showStatus && saved && (
+            <span className={`poster-status is-${saved.status}`}>
+              {statusLabel(saved.status)}
+            </span>
+          )}
+        </div>
+        <h3 className="mt-3 line-clamp-2 min-h-10 text-[14px] font-semibold leading-5 text-text">
+          {title.title}
+        </h3>
+        <p className="mt-1 font-mono text-[11px] text-text-dim">{meta}</p>
+      </Link>
+      {showStatus && !saved && onSave && (
+        <button type="button" className="poster-save" onClick={() => onSave(title)}>
+          + WATCHLIST
+        </button>
+      )}
+    </article>
+  )
+}
+
+function defaultMeta(title: SearchHit) {
+  return `${title.year ?? "—"}${
+    title.voteAverage != null ? ` · ${title.voteAverage.toFixed(1)}` : ""
+  }`
+}
+
 function PosterSkeletons() {
   return (
     <div className="mt-6 flex gap-2 overflow-hidden">
@@ -86,56 +148,20 @@ export function PosterRail({
         >
           {titles.map((item, index) => {
             const saved = archive?.find(
-              (title) => titleKey(title) === titleKey(item),
+              (entry) => titleKey(entry) === titleKey(item),
             )
             return (
-              <article
+              <PosterCard
                 key={titleKey(item)}
+                title={item}
+                saved={saved}
+                onSave={onSave}
+                showStatus={showArchiveStatus}
+                meta={metaFor?.(item) ?? defaultMeta(item)}
                 className="poster-card marquee-item mr-3 w-[132px] shrink-0 sm:w-[144px]"
-              >
-                <Link to={titlePath(item)}>
-                  <div className="poster-frame relative overflow-hidden border border-border bg-surface">
-                    <MediaImage
-                      src={item.posterUrl}
-                      alt={`${item.title} poster`}
-                      className="poster w-full"
-                      imageClassName="object-cover"
-                      fallback="NO POSTER"
-                      loading={index < 8 ? "eager" : "lazy"}
-                      fetchPriority={index < 4 ? "high" : "auto"}
-                    />
-                    {showArchiveStatus && saved && (
-                      <span className={`poster-status is-${saved.status}`}>
-                        {saved.status === "watched"
-                          ? "STAMPED"
-                          : saved.status === "watching"
-                            ? "WATCHING"
-                            : "WATCHLIST"}
-                      </span>
-                    )}
-                  </div>
-                  <h3 className="mt-3 line-clamp-2 min-h-10 text-[14px] font-semibold leading-5 text-text">
-                    {item.title}
-                  </h3>
-                  <p className="mt-1 font-mono text-[11px] text-text-dim">
-                    {metaFor?.(item) ??
-                      `${item.year ?? "—"}${
-                        item.voteAverage != null
-                          ? ` · ${item.voteAverage.toFixed(1)}`
-                          : ""
-                      }`}
-                  </p>
-                </Link>
-                {showArchiveStatus && !saved && onSave && (
-                  <button
-                    type="button"
-                    className="poster-save"
-                    onClick={() => onSave(item)}
-                  >
-                    + WATCHLIST
-                  </button>
-                )}
-              </article>
+                loading={index < 8 ? "eager" : "lazy"}
+                fetchPriority={index < 4 ? "high" : "auto"}
+              />
             )
           })}
         </Marquee>

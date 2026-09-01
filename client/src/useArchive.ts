@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query"
 import { useCallback, useMemo, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { fetchJson } from "./api"
@@ -17,6 +22,19 @@ import type {
 import { titleKey, toArchiveEntry, upsertSaved } from "./title"
 
 export const ARCHIVE_INDEX_KEY = ["archive", "index"] as const
+
+/**
+ * Drops every paged collection query. Any write that changes what a collection
+ * holds can reorder or re-scope its pages, and a page is too cheap to reload to
+ * be worth patching in place. Collection rows — including custom lists — all
+ * come from `["archive", "page"]`, so a write that skips it leaves the reader
+ * looking at titles that are no longer there.
+ */
+export function invalidatePagedViews(queryClient: QueryClient) {
+  for (const key of [["archive", "page"], ["lists"], ["list"], ["diary"]]) {
+    queryClient.invalidateQueries({ queryKey: key })
+  }
+}
 
 type TitleRef = { tmdbId: number; mediaType: MediaType }
 
@@ -57,20 +75,17 @@ export function useArchive() {
     [queryClient],
   )
 
-  /// Any archive write can reorder or re-scope a paged view, so the paged
-  /// queries are dropped rather than patched.
-  const invalidatePagedViews = useCallback(() => {
-    for (const key of [["archive", "page"], ["lists"], ["list"], ["diary"]]) {
-      queryClient.invalidateQueries({ queryKey: key })
-    }
-  }, [queryClient])
+  const invalidatePaged = useCallback(
+    () => invalidatePagedViews(queryClient),
+    [queryClient],
+  )
 
   const applySaved = useCallback(
     (saved: SavedTitle) => {
       patchIndex((current) => upsertSaved(current, toArchiveEntry(saved)))
-      invalidatePagedViews()
+      invalidatePaged()
     },
-    [invalidatePagedViews, patchIndex],
+    [invalidatePaged, patchIndex],
   )
 
   const reportError = useCallback((fallback: string) => {
@@ -112,7 +127,7 @@ export function useArchive() {
     onSuccess: (_void, ref) => {
       const key = titleKey(ref)
       patchIndex((current) => current.filter((entry) => titleKey(entry) !== key))
-      invalidatePagedViews()
+      invalidatePaged()
     },
     onError: reportError("TITLE COULD NOT BE REMOVED"),
   })
@@ -141,7 +156,7 @@ export function useArchive() {
           titleKey(item) === key ? { ...item, favorite: !entry.favorite } : item,
         ),
       )
-      invalidatePagedViews()
+      invalidatePaged()
     },
     onError: reportError("FAVORITE COULD NOT BE UPDATED"),
   })
@@ -226,11 +241,12 @@ export function useArchive() {
 export type Archive = ReturnType<typeof useArchive>
 
 /**
- * One page of a collection view. Views are hydrated with artwork, so they are
- * fetched a page at a time rather than as the whole archive.
+ * One page of a collection, either a default view or a custom list. Pages are
+ * hydrated with artwork, so they are fetched one at a time rather than as the
+ * whole archive.
  */
 export function useArchivePage(
-  view: ArchiveView,
+  source: ArchiveView | { list: string },
   options: {
     pageSize?: number
     page?: number
@@ -240,12 +256,14 @@ export function useArchivePage(
   } = {},
 ) {
   const { pageSize, page = 1, sort = "added", mediaType = null, enabled = true } = options
-  const params = new URLSearchParams({ view, page: String(page), sort })
+  const params = new URLSearchParams({ page: String(page), sort })
+  if (typeof source === "string") params.set("view", source)
+  else params.set("list", source.list)
   if (pageSize) params.set("pageSize", String(pageSize))
   if (mediaType) params.set("mediaType", mediaType)
 
   return useQuery({
-    queryKey: ["archive", "page", view, page, pageSize ?? "default", sort, mediaType],
+    queryKey: ["archive", "page", source, page, pageSize ?? "default", sort, mediaType],
     queryFn: () => fetchJson<ArchivePage>(`/api/titles?${params}`),
     enabled,
     // Keeps the current page on screen while the next sort or filter loads,

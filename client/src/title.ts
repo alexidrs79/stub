@@ -55,7 +55,7 @@ export type CustomCollection = {
   id: string
   name: string
   type: "custom"
-  titles: SavedTitle[]
+  count: number
 }
 
 export type DiaryEvent = {

@@ -1,4 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express"
+import type { MediaType } from "./tmdb.js"
 
 /**
  * Forwards a rejected handler to the error middleware. Express 5 does this for
@@ -59,11 +60,48 @@ export class BadRequest extends Error {
   }
 }
 
-export function parseMediaType(value: unknown) {
+export function parseMediaType(value: unknown): MediaType | null {
   return value === "movie" || value === "tv" ? value : null
 }
 
 export function parseTmdbId(value: unknown) {
   const id = Number(value)
   return Number.isSafeInteger(id) && id > 0 ? id : null
+}
+
+export function parseTitleRef(
+  body: { tmdbId?: unknown; mediaType?: unknown } | undefined,
+): { tmdbId: number; mediaType: MediaType } | null {
+  if (!body) return null
+  const tmdbId = parseTmdbId(body.tmdbId)
+  const mediaType = parseMediaType(body.mediaType)
+  if (!tmdbId || !mediaType) return null
+  return { tmdbId, mediaType }
+}
+
+export function parseNote(value: unknown) {
+  if (value == null || value === "") return { valid: true as const, note: null }
+  if (typeof value !== "string") return { valid: false as const, note: null }
+  const note = value.trim()
+  if (note.length > 140) return { valid: false as const, note: null }
+  return { valid: true as const, note: note || null }
+}
+
+export function parseScore(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 10
+    ? value
+    : null
+}
+
+export function parsePage(value: unknown) {
+  if (value == null || value === "") return 1
+  const page = Number(value)
+  return Number.isInteger(page) && page >= 1 ? page : null
+}
+
+export function parsePageSize(value: unknown, fallback: number, max = 100) {
+  if (value == null || value === "") return fallback
+  const size = Number(value)
+  if (!Number.isInteger(size) || size < 1) return null
+  return Math.min(size, max)
 }

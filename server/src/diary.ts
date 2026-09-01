@@ -7,9 +7,10 @@ import {
 } from "./archive.js"
 import { requireUser } from "./auth.js"
 import { prisma } from "./db.js"
+import { parseNote, parsePage, parseScore } from "./http.js"
 import { editWatchEvent, removeWatchEvent } from "./watch-state.js"
 
-const DIARY_PAGE_SIZE = 100
+const DIARY_PAGE_SIZE = 25
 
 export async function listDiary(req: Request, res: Response) {
   const userId = await requireUser(req, res)
@@ -34,8 +35,8 @@ export async function listDiary(req: Request, res: Response) {
     }
   }
 
-  const page = Number(req.query.page ?? 1)
-  if (!Number.isInteger(page) || page < 1) {
+  const page = parsePage(req.query.page)
+  if (page == null) {
     res.status(400).json({ error: "Bad page." })
     return
   }
@@ -85,25 +86,20 @@ export async function updateDiaryEvent(req: Request, res: Response) {
 
   const changes: { score?: number; note?: string | null; watchedAt?: Date } = {}
   if (req.body?.score !== undefined) {
-    const score = req.body.score
-    if (!Number.isInteger(score) || score < 1 || score > 10) {
+    const score = parseScore(req.body.score)
+    if (score == null) {
       res.status(400).json({ error: "Choose a whole-number score from 1 to 10." })
       return
     }
     changes.score = score
   }
   if (req.body?.note !== undefined) {
-    const note = req.body.note
-    if (note !== null && typeof note !== "string") {
+    const parsed = parseNote(req.body.note)
+    if (!parsed.valid) {
       res.status(400).json({ error: "Notes can contain up to 140 characters." })
       return
     }
-    const trimmed = typeof note === "string" ? note.trim() : null
-    if (trimmed && trimmed.length > 140) {
-      res.status(400).json({ error: "Notes can contain up to 140 characters." })
-      return
-    }
-    changes.note = trimmed || null
+    changes.note = parsed.note
   }
   if (req.body?.watchedAt !== undefined) {
     const parsed = parseWatchedAt(req.body.watchedAt)

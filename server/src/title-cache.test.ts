@@ -1,7 +1,13 @@
 import assert from "node:assert/strict"
 import { after, test } from "node:test"
 import { prisma } from "./db.js"
-import { clearTitleCacheMemory, getTitleCards } from "./title-cache.js"
+import {
+  clearTitleCacheMemory,
+  episodeFitsSeasonOptions,
+  getTitleCards,
+  requireSeasonOptionsForProgress,
+  setTitleCardFetcherForTests,
+} from "./title-cache.js"
 import type { TitleCard } from "./tmdb.js"
 
 if (process.env.NODE_ENV === "production") {
@@ -9,6 +15,8 @@ if (process.env.NODE_ENV === "production") {
 }
 
 after(async () => {
+  setTitleCardFetcherForTests(null)
+  clearTitleCacheMemory()
   await prisma.$disconnect()
 })
 
@@ -81,9 +89,9 @@ test("a repeated title is resolved once", async () => {
   const id = 999_104
   clearTitleCacheMemory()
   try {
-    await seed(card(id, "Rewatched Title"))
+    await seed(card(id, "Repeated Title"))
 
-    // A rewatched title appears on several diary rows; the batch must collapse
+    // The same title can appear on several rows; the batch must collapse
     // them rather than reading the same row repeatedly.
     const cards = await withoutTmdb(() =>
       getTitleCards(
@@ -91,7 +99,7 @@ test("a repeated title is resolved once", async () => {
       ),
     )
     assert.equal(cards.size, 1)
-    assert.equal(cards.get("movie-999104")?.title, "Rewatched Title")
+    assert.equal(cards.get("movie-999104")?.title, "Repeated Title")
   } finally {
     await prisma.titleCache.deleteMany({ where: { tmdbId: id } })
   }
@@ -129,6 +137,84 @@ test("a stale row is preferred over a placeholder when TMDb refuses", async () =
     )
     assert.equal(cards.get("movie-999106")?.title, "Stale But Real")
   } finally {
+    await prisma.titleCache.deleteMany({ where: { tmdbId: id } })
+  }
+})
+
+function tvCard(tmdbId: number, episodeCount: number): TitleCard {
+  return {
+    tmdbId,
+    mediaType: "tv",
+    title: "Airing Show",
+    year: 2026,
+    runtime: "45 MIN",
+    genre: "DRAMA",
+    genres: ["DRAMA"],
+    posterUrl: null,
+    backdropUrl: null,
+    voteAverage: 8,
+    seasonOptions: [
+      {
+        season: 1,
+        name: "Season 1",
+        episodeCount,
+        airDate: "2026-01-01",
+      },
+    ],
+  }
+}
+
+test("a missing episode is rejected against the listed count", () => {
+  const options = tvCard(1, 8).seasonOptions
+  const miss = episodeFitsSeasonOptions(options, 1, 9)
+  assert.equal(miss.ok, false)
+  if (!miss.ok) assert.match(miss.error, /8 episodes/)
+  assert.equal(episodeFitsSeasonOptions(options, 1, 8).ok, true)
+  assert.equal(episodeFitsSeasonOptions(options, 2, 1).ok, false)
+})
+
+test("progress validation refetches when a new episode is missing from the cache", async () => {
+  const id = 999_107
+  clearTitleCacheMemory()
+  setTitleCardFetcherForTests(async () => tvCard(id, 9))
+  try {
+    await seed(tvCard(id, 8))
+
+    const allowed = await requireSeasonOptionsForProgress(id, 1, 9)
+    assert.equal(allowed.ok, true)
+    if (allowed.ok) {
+      assert.equal(
+        allowed.seasonOptions.find((option) => option.season === 1)?.episodeCount,
+        9,
+      )
+    }
+
+    const stored = await prisma.titleCache.findUnique({
+      where: { tmdbId_mediaType: { tmdbId: id, mediaType: "tv" } },
+    })
+    const payload = stored?.payload as TitleCard | undefined
+    assert.ok(payload)
+    assert.equal(payload.seasonOptions[0].episodeCount, 9)
+  } finally {
+    setTitleCardFetcherForTests(null)
+    await prisma.titleCache.deleteMany({ where: { tmdbId: id } })
+  }
+})
+
+test("progress validation still rejects after a live refetch that does not list the episode", async () => {
+  const id = 999_108
+  clearTitleCacheMemory()
+  setTitleCardFetcherForTests(async () => tvCard(id, 8))
+  try {
+    await seed(tvCard(id, 8))
+    const rejected = await requireSeasonOptionsForProgress(id, 1, 9)
+    assert.equal(rejected.ok, false)
+    if (!rejected.ok) {
+      assert.equal(rejected.status, 400)
+      assert.match(rejected.error, /8 episodes/)
+    }
+  } finally {
+    setTitleCardFetcherForTests(null)
     await prisma.titleCache.deleteMany({ where: { tmdbId: id } })
   }
 })

@@ -4,15 +4,18 @@ import { Link } from "react-router-dom"
 import { fetchJson } from "./api"
 import { localDateKey } from "./dates"
 import { MediaImage } from "./MediaImage"
+import { Pager } from "./Pager"
 import { titlePath } from "./paths"
 import type { DiaryEvent, DiaryPageResponse } from "./title"
-import { ARCHIVE_INDEX_KEY } from "./useArchive"
+import { ARCHIVE_INDEX_KEY, invalidatePagedViews } from "./useArchive"
 import { VerdictForm } from "./VerdictForm"
 
 function currentMonth() {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
 }
+
+const PAGE_SIZE = 25
 
 function dayLabel(value: string) {
   return new Date(value).toLocaleDateString("en-US", {
@@ -26,19 +29,26 @@ function dayLabel(value: string) {
 export function DiaryPage() {
   const queryClient = useQueryClient()
   const [month, setMonth] = useState(currentMonth)
+  const [pager, setPager] = useState({ month: "", page: 1 })
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const removeTrigger = useRef<HTMLButtonElement | null>(null)
   const editTrigger = useRef<HTMLButtonElement | null>(null)
+  // Picking another month starts at its newest stamps. Derived so the month
+  // input stays the only thing that has to change.
+  const page = pager.month === month ? pager.page : 1
   const diary = useQuery({
-    queryKey: ["diary", month],
-    queryFn: () => fetchJson<DiaryPageResponse>(`/api/diary?month=${month}`),
+    queryKey: ["diary", month, page],
+    queryFn: () =>
+      fetchJson<DiaryPageResponse>(`/api/diary?month=${month}&page=${page}`),
+    placeholderData: (previous) => previous,
   })
 
   /// A stamp edit can move an entry to another month or change the verdict the
   /// rest of the app shows, so both the log and the archive index are dropped.
   function invalidateAfterChange() {
-    for (const key of [["diary"], ARCHIVE_INDEX_KEY, ["archive", "page"], ["lists"], ["list"], ["profile"]]) {
+    invalidatePagedViews(queryClient)
+    for (const key of [ARCHIVE_INDEX_KEY, ["profile"]]) {
       queryClient.invalidateQueries({ queryKey: key })
     }
   }
@@ -72,7 +82,7 @@ export function DiaryPage() {
         eventId: string
         remainingWatchCount: number
         status: "watchlist" | "watched"
-      }>(`/api/diary/${eventId}`, { method: "DELETE" }),
+      }>(`/api/diary/${eventId}`, { method: "DELETE"       }),
     onSuccess: () => {
       setConfirmingId(null)
       invalidateAfterChange()
@@ -86,6 +96,15 @@ export function DiaryPage() {
   }
   const events = diary.data?.events ?? []
   const total = diary.data?.total ?? 0
+
+  // Removing stamps can strand the reader past the end of a shrunken month,
+  // where the empty state would wrongly claim they logged nothing. Corrected
+  // while rendering so no blank page is ever shown.
+  if (events.length === 0 && total > 0) {
+    const lastPage = Math.ceil(total / PAGE_SIZE)
+    if (lastPage < page) setPager({ month, page: lastPage })
+  }
+
   const groups = new Map<string, DiaryEvent[]>()
   for (const event of events) {
     const key = localDateKey(event.watchedAt)
@@ -270,6 +289,19 @@ export function DiaryPage() {
             </section>
           ))}
         </div>
+      )}
+
+      {!diary.isLoading && !diary.isError && (
+        <Pager
+          label="Diary pages"
+          page={diary.data?.page ?? page}
+          pageSize={diary.data?.pageSize ?? PAGE_SIZE}
+          shown={events.length}
+          total={total}
+          hasMore={Boolean(diary.data?.hasMore)}
+          busy={diary.isFetching}
+          onPage={(next) => setPager({ month, page: next })}
+        />
       )}
     </main>
   )
