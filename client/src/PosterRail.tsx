@@ -2,7 +2,7 @@ import { Link } from "react-router-dom"
 import { Marquee } from "./Marquee"
 import { MediaImage } from "./MediaImage"
 import { titlePath } from "./paths"
-import type { SavedTitle, SearchHit } from "./title"
+import type { ArchiveEntry, SearchHit } from "./title"
 import { titleKey } from "./title"
 
 function PosterSkeletons() {
@@ -28,7 +28,7 @@ export function PosterRail({
   error = false,
   onRetry,
   metaFor,
-  savedTitles,
+  archive,
   onSave,
   showArchiveStatus = false,
 }: {
@@ -40,7 +40,7 @@ export function PosterRail({
   error?: boolean
   onRetry?: () => void
   metaFor?: (title: SearchHit) => string | null
-  savedTitles?: SavedTitle[]
+  archive?: ArchiveEntry[]
   onSave?: (title: SearchHit) => void
   showArchiveStatus?: boolean
 }) {
@@ -85,7 +85,7 @@ export function PosterRail({
           }
         >
           {titles.map((item, index) => {
-            const saved = savedTitles?.find(
+            const saved = archive?.find(
               (title) => titleKey(title) === titleKey(item),
             )
             return (

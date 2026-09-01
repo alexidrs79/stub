@@ -53,30 +53,53 @@ export function clearAuthCookie(res: Response) {
   res.clearCookie(COOKIE, options)
 }
 
+/**
+ * Resolves the signed-in user, or null when the caller presents no usable
+ * session. Only token problems count as "not signed in" — a database failure
+ * propagates, because answering 401 to a transient outage would silently sign
+ * every user out instead of reporting the fault.
+ */
 export async function readUserId(req: Request) {
   const token = req.cookies?.[COOKIE]
   if (typeof token !== "string" || !token) return null
+
+  let payload: TokenPayload
   try {
-    const payload = jwt.verify(token, secret(), {
+    payload = jwt.verify(token, secret(), {
       algorithms: ["HS256"],
       audience: TOKEN_AUDIENCE,
       issuer: TOKEN_ISSUER,
     }) as TokenPayload
-    if (
-      typeof payload.sub !== "string" ||
-      !Number.isSafeInteger(payload.ver) ||
-      payload.ver < 0
-    ) {
-      return null
-    }
-    const user = await prisma.user.findUnique({
-      where: { id: payload.sub },
-      select: { sessionVersion: true },
-    })
-    return user?.sessionVersion === payload.ver ? payload.sub : null
   } catch {
     return null
   }
+  if (
+    typeof payload.sub !== "string" ||
+    !Number.isSafeInteger(payload.ver) ||
+    payload.ver < 0
+  ) {
+    return null
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: payload.sub },
+    select: { sessionVersion: true },
+  })
+  // A password change bumps the version, retiring tokens issued before it.
+  return user?.sessionVersion === payload.ver ? payload.sub : null
+}
+
+/**
+ * Resolves the caller or answers 401. Returns null when it has already replied,
+ * so a handler can bail with `if (!userId) return`.
+ */
+export async function requireUser(req: Request, res: Response) {
+  const userId = await readUserId(req)
+  if (!userId) {
+    res.status(401).json({ error: "Not logged in." })
+    return null
+  }
+  return userId
 }
 
 export async function signup(req: Request, res: Response) {

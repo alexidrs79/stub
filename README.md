@@ -3,6 +3,37 @@
 Stub is a private movie and television archive built with React, Express,
 PostgreSQL, Prisma, and TMDb.
 
+## How the archive is modelled
+
+A title sits in exactly one of three primary states — watchlist, watching, or
+watched — and every state change runs inside a transaction that takes a
+Postgres advisory lock on `(user, title)`, so concurrent tabs cannot interleave
+into an inconsistent state.
+
+Each watched title carries one dated diary stamp. Stamping a title again
+revises that stamp rather than adding another, and removing it returns the
+title to the watchlist. The date is the viewer's to set, so a title finished
+last Tuesday need not be filed under today, and a stamp's score, note, and date
+stay editable afterwards. The rating shown elsewhere in the app mirrors the
+stamp, so the detail page and the diary never disagree.
+
+TMDb card data — title, year, runtime, artwork, season counts — is cached in the
+`title_cache` table for seven days. Hydrating an archive therefore costs one
+database read rather than one upstream request per title, and a stale row is
+still served when TMDb is unreachable, so the archive renders even during a
+TMDb outage.
+
+The API separates the two shapes this needs:
+
+- `GET /api/titles/index` returns the whole archive with no artwork. It is what
+  every page uses to mark titles you already saved, and it makes no upstream
+  requests.
+- `GET /api/titles?view=&sort=&mediaType=&page=` returns one hydrated page of a
+  collection view. Sorting and filtering happen server-side over the whole view
+  so paging stays stable.
+- `GET /api/profile/stats` computes taste aggregates over the whole archive
+  server-side and returns only the totals plus two short display lists.
+
 ## Local development
 
 1. Create a PostgreSQL database.
@@ -54,6 +85,13 @@ npm start
 `npm run check` runs client and server linting, strict TypeScript builds, and the
 frontend and database-backed test suites. GitHub Actions runs the same gate for
 pushes and pull requests.
+
+The server suite needs a PostgreSQL database with migrations applied and covers
+authentication (session issuance, credential failures, session-version
+revocation on password change, account deletion, cross-site request rejection),
+authorization (no user can read or change another user's lists, diary stamps, or
+archive, and every owner-scoped route refuses an anonymous caller), the
+watch-state transitions under concurrency, and the title cache.
 
 Use `/api/health` for process liveness and `/api/ready` for readiness checks that
 include the database.

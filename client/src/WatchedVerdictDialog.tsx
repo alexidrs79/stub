@@ -1,17 +1,16 @@
 import { useEffect, useRef } from "react"
-import type { SavedTitle } from "./title"
 import { VerdictForm } from "./VerdictForm"
 
 type WatchedVerdictDialogProps = {
-  title: SavedTitle
+  titleName: string
   pending: boolean
   error: string | null
   onCancel: () => void
-  onConfirm: (score: number, note: string | null) => Promise<void>
+  onConfirm: (score: number, note: string | null, watchedAt?: string) => Promise<void>
 }
 
 export function WatchedVerdictDialog({
-  title,
+  titleName,
   pending,
   error,
   onCancel,
@@ -27,7 +26,7 @@ export function WatchedVerdictDialog({
       if (event.key === "Escape" && !pending) onCancel()
       if (event.key !== "Tab" || !panel.current) return
       const focusable = panel.current.querySelectorAll<HTMLElement>(
-        "button:not(:disabled), textarea:not(:disabled)",
+        "button:not(:disabled), input:not(:disabled), textarea:not(:disabled)",
       )
       if (focusable.length === 0) return
       const first = focusable[0]
@@ -76,8 +75,8 @@ export function WatchedVerdictDialog({
                 Stamp your verdict
               </h2>
               <p id="watched-verdict-description" className="mt-2 text-body-sm leading-6 text-text-dim">
-                Rate <span className="text-text">{title.title}</span> before moving it to your
-                watched collection.
+                Rate <span className="text-text">{titleName}</span> before moving it to
+                your watched collection.
               </p>
             </div>
             <button
@@ -95,6 +94,7 @@ export function WatchedVerdictDialog({
         </div>
         <div className="p-5 sm:p-6">
           <VerdictForm
+            showDate
             submitLabel="Stamp as watched"
             pendingLabel="Stamping…"
             pending={pending}

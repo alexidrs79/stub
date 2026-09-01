@@ -1,27 +1,29 @@
 import { useState, type FormEvent } from "react"
-import type { SavedTitle } from "./title"
+import type { SeasonOption } from "./title"
 
+/// Takes the season list and the saved position separately: on the detail page
+/// the seasons come from the TMDb record, not from the archive entry.
 type TvProgressEditorProps = {
-  title: SavedTitle
+  seasonOptions: SeasonOption[]
+  progress: { season: number; episode: number } | null
   mode: "detail" | "collection"
   onUpdate: (season: number, episode: number) => Promise<void>
   onMessage?: (message: string) => void
 }
 
 export function TvProgressEditor({
-  title,
+  seasonOptions,
+  progress,
   mode,
   onUpdate,
   onMessage,
 }: TvProgressEditorProps) {
-  const options = title.seasonOptions ?? []
+  const options = seasonOptions ?? []
   const initialSeason =
-    options.find((option) => option.season === title.progress?.season) ?? options[0]
+    options.find((option) => option.season === progress?.season) ?? options[0]
   const [season, setSeason] = useState(initialSeason?.season ?? 0)
   const [episode, setEpisode] = useState(
-    initialSeason
-      ? Math.min(title.progress?.episode ?? 1, initialSeason.episodeCount)
-      : 0,
+    initialSeason ? Math.min(progress?.episode ?? 1, initialSeason.episodeCount) : 0,
   )
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")

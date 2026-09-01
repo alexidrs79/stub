@@ -93,14 +93,17 @@ export async function transitionToWatching(
   })
 }
 
+/// A title carries one stamp. Stamping again revises it, so the diary never
+/// grows a second entry for the same title.
 export async function transitionToWatched(
   userId: string,
   ref: TitleRef,
   score: number,
   note: string | null,
   lists: DefaultListIds,
+  watchedAt?: Date,
 ) {
-  await prisma.$transaction(async (transaction) => {
+  return prisma.$transaction(async (transaction) => {
     await lockTitle(transaction, userId, ref)
     await transaction.listItem.deleteMany({
       where: {
@@ -124,14 +127,16 @@ export async function transitionToWatched(
       update: { score, note },
     })
     await transaction.viewingProgress.deleteMany({ where: { userId, ...ref } })
-    await transaction.watchEvent.upsert({
+    return transaction.watchEvent.upsert({
       where: { userId_tmdbId_mediaType: { userId, ...ref } },
-      create: { userId, ...ref, score, note },
-      update: { score, note },
+      create: { userId, ...ref, score, note, ...(watchedAt ? { watchedAt } : {}) },
+      update: { score, note, ...(watchedAt ? { watchedAt } : {}) },
     })
   })
 }
 
+/// Rewrites the verdict on a title's stamp, keeping the rating and the diary
+/// showing the same thing.
 export async function updateWatchedVerdict(
   userId: string,
   ref: TitleRef,
@@ -153,6 +158,46 @@ export async function updateWatchedVerdict(
   })
 }
 
+/// Edits a diary stamp in place. Score and note are mirrored onto the rating so
+/// the detail page and the diary never disagree; the date is the stamp's alone.
+export async function editWatchEvent(
+  userId: string,
+  eventId: string,
+  changes: { score?: number; note?: string | null; watchedAt?: Date },
+) {
+  return prisma.$transaction(async (transaction) => {
+    const event = await transaction.watchEvent.findFirst({
+      where: { id: eventId, userId },
+    })
+    if (!event) return null
+    const ref = {
+      tmdbId: event.tmdbId,
+      mediaType: event.mediaType as MediaType,
+    }
+    await lockTitle(transaction, userId, ref)
+    const current = await transaction.watchEvent.findFirst({
+      where: { id: eventId, userId },
+    })
+    if (!current) return null
+
+    const verdict = {
+      ...(changes.score === undefined ? {} : { score: changes.score }),
+      ...(changes.note === undefined ? {} : { note: changes.note }),
+    }
+    await transaction.watchEvent.update({
+      where: { id: current.id },
+      data: {
+        ...verdict,
+        ...(changes.watchedAt === undefined ? {} : { watchedAt: changes.watchedAt }),
+      },
+    })
+    if (Object.keys(verdict).length > 0) {
+      await transaction.rating.updateMany({ where: { userId, ...ref }, data: verdict })
+    }
+    return { ...ref, eventId: current.id }
+  })
+}
+
 export async function removeFromArchive(userId: string, ref: TitleRef) {
   await prisma.$transaction(async (transaction) => {
     await lockTitle(transaction, userId, ref)
@@ -170,6 +215,8 @@ export async function removeFromArchive(userId: string, ref: TitleRef) {
   })
 }
 
+/// Deletes a title's stamp, which returns it to the watchlist and clears the
+/// verdict that stamp carried.
 export async function removeWatchEvent(
   userId: string,
   eventId: string,

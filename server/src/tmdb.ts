@@ -257,14 +257,12 @@ function seasonOptionsOf(data: DetailPayload): SeasonOption[] {
     .sort((a, b) => a.season - b.season)
 }
 
-const cardCache = new Map<string, { at: number; card: TitleCard }>()
-const CARD_TTL = 10 * 60 * 1000
-
-export async function getTitleCard(mediaType: MediaType, id: number): Promise<TitleCard> {
-  const key = `${mediaType}-${id}`
-  const cached = cardCache.get(key)
-  if (cached && Date.now() - cached.at < CARD_TTL) return cached.card
-
+/// Raw upstream read. Caching lives in `title-cache.ts` so this stays a plain
+/// TMDb client.
+export async function fetchTitleCard(
+  mediaType: MediaType,
+  id: number,
+): Promise<TitleCard> {
   const data = await tmdb<DetailPayload>(`/${mediaType}/${id}`)
   const genres = (data.genres ?? []).map((genre) => genre.name.toUpperCase())
   const card: TitleCard = {
@@ -280,7 +278,6 @@ export async function getTitleCard(mediaType: MediaType, id: number): Promise<Ti
     voteAverage: data.vote_average ? Math.round(data.vote_average * 10) / 10 : null,
     seasonOptions: mediaType === "tv" ? seasonOptionsOf(data) : [],
   }
-  cardCache.set(key, { at: Date.now(), card })
   return card
 }
 

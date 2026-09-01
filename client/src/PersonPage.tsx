@@ -9,13 +9,13 @@ import { numericIdFromSlug, personPath } from "./paths"
 import type {
   PersonCredit,
   PersonDetail,
-  SavedTitle,
+  ArchiveEntry,
   SearchHit,
 } from "./title"
 import { titleKey } from "./title"
 
 type PersonPageProps = {
-  savedTitles: SavedTitle[]
+  archive: ArchiveEntry[]
   signedIn: boolean
   onSave: (title: SearchHit) => void
 }
@@ -53,7 +53,7 @@ function creditCards(credits: PersonCredit[]): SearchHit[] {
 }
 
 export function PersonPage({
-  savedTitles,
+  archive,
   signedIn,
   onSave,
 }: PersonPageProps) {
@@ -226,7 +226,7 @@ export function PersonPage({
       <PosterRail
         title="Known for"
         titles={data.knownFor}
-        savedTitles={savedTitles}
+        archive={archive}
         onSave={onSave}
         showArchiveStatus={signedIn}
         enter
@@ -264,7 +264,7 @@ export function PersonPage({
       <PosterRail
         title="Movies"
         titles={movieCards}
-        savedTitles={savedTitles}
+        archive={archive}
         onSave={onSave}
         showArchiveStatus={signedIn}
         metaFor={(item) => {
@@ -277,7 +277,7 @@ export function PersonPage({
       <PosterRail
         title="Television"
         titles={tvCards}
-        savedTitles={savedTitles}
+        archive={archive}
         onSave={onSave}
         showArchiveStatus={signedIn}
         metaFor={(item) => {

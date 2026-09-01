@@ -102,6 +102,8 @@ model ViewingProgress {
   @@map("viewing_progress")
 }
 
+/// One diary stamp per title. The date is the viewer's to set, but a title
+/// carries a single viewing: stamping again revises it rather than adding one.
 model WatchEvent {
   id        String   @id @default(cuid())
   userId    String   @map("user_id")
@@ -127,4 +129,17 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+/// TMDb card data, persisted so an archive page costs one query instead of one
+/// upstream request per title. Stale rows still serve when TMDb is unreachable.
+model TitleCache {
+  tmdbId    Int      @map("tmdb_id")
+  mediaType MediaType @map("media_type")
+  payload   Json
+  fetchedAt DateTime @default(now()) @map("fetched_at")
+
+  @@id([tmdbId, mediaType])
+  @@index([fetchedAt])
+  @@map("title_cache")
 }

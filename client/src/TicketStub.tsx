@@ -1,14 +1,14 @@
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { titlePath } from "./paths"
-import type { MediaType, SavedTitle } from "./title"
+import type { ArchiveEntry, MediaType, SavedTitle } from "./title"
 import "./TicketStub.css"
 
 type TicketStubProps = {
   title: SavedTitle
   animateStamp?: boolean
-  onMarkWatched?: (tmdbId: number, mediaType: MediaType) => void
-  onToggleFavorite?: (title: SavedTitle) => void
+  onMarkWatched?: (tmdbId: number, mediaType: MediaType, name: string) => void
+  onToggleFavorite?: (entry: ArchiveEntry) => void
 }
 
 type Point = { x: number; y: number }
@@ -234,7 +234,7 @@ export function TicketStub({
           type="button"
           className="ticket-stamp-zone stamp-empty"
           aria-label={`Mark ${title.title} watched`}
-          onClick={() => onMarkWatched?.(title.tmdbId, title.mediaType)}
+          onClick={() => onMarkWatched?.(title.tmdbId, title.mediaType, title.title)}
           disabled={!onMarkWatched}
         >
           <span

@@ -7,7 +7,8 @@ import { MediaImage } from "./MediaImage"
 import { PosterRail } from "./PosterRail"
 import { genrePath, titlePath } from "./paths"
 import { TicketStub } from "./TicketStub"
-import type { GenreInfo, MediaType, SavedTitle, SearchHit } from "./title"
+import type { ArchiveEntry, GenreInfo, MediaType, SavedTitle, SearchHit } from "./title"
+import { useArchivePage } from "./useArchive"
 import { titleKey } from "./title"
 
 const fanTilt = [-3.2, 2.2, -1.4, 2.8, -2.4, 1.6]
@@ -51,16 +52,30 @@ function EmptyStubs({ children }: { children: ReactNode }) {
 function StubRack({
   heading,
   titles,
+  total,
+  loading,
   justStamped,
   onMarkWatched,
   onToggleFavorite,
 }: {
   heading: string
   titles: SavedTitle[]
+  total: number
+  loading: boolean
   justStamped: string | null
-  onMarkWatched: (tmdbId: number, mediaType: MediaType) => void
-  onToggleFavorite: (title: SavedTitle) => void
+  onMarkWatched: (tmdbId: number, mediaType: MediaType, name: string) => void
+  onToggleFavorite: (entry: ArchiveEntry) => void
 }) {
+  if (loading) {
+    return (
+      <section className="mt-16">
+        <div className="section-heading">
+          <h2 className="font-display text-display-sm font-normal">{heading}</h2>
+        </div>
+        <div className="skeleton-pulse mt-6 h-36 bg-surface" />
+      </section>
+    )
+  }
   return (
     <section className="mt-16">
       {titles.length === 0 ? (
@@ -82,7 +97,7 @@ function StubRack({
             <>
               <h2 className="font-display text-display-sm font-normal">{heading}</h2>
               <span className="shrink-0 font-mono text-[11px] tracking-[0.06em] text-text-dim">
-                {titles.length} {titles.length === 1 ? "TITLE" : "TITLES"}
+                {total} {total === 1 ? "TITLE" : "TITLES"}
               </span>
             </>
           }
@@ -111,18 +126,20 @@ function StubRack({
 }
 
 type HomePageProps = {
-  titles: SavedTitle[]
-  loading: boolean
+  archive: ArchiveEntry[]
   signedIn: boolean
   justStamped: string | null
   onSave: (title: SearchHit) => void
-  onMarkWatched: (tmdbId: number, mediaType: MediaType) => void
-  onToggleFavorite: (title: SavedTitle) => void
+  onMarkWatched: (tmdbId: number, mediaType: MediaType, name: string) => void
+  onToggleFavorite: (entry: ArchiveEntry) => void
 }
 
+/// Each rack shows the first handful of a view rather than the whole archive,
+/// so the home page costs the same whether a user has ten titles or a thousand.
+const RACK_SIZE = 12
+
 export function HomePage({
-  titles,
-  loading,
+  archive,
   signedIn,
   justStamped,
   onSave,
@@ -160,12 +177,14 @@ export function HomePage({
     staleTime: 1000 * 60 * 60,
   })
 
+  const rackOptions = { pageSize: RACK_SIZE, enabled: signedIn }
+  const watchlist = useArchivePage("watchlist", rackOptions)
+  const watching = useArchivePage("watching", rackOptions)
+  const watched = useArchivePage("watched", rackOptions)
+
   const genreById = new Map((genreCatalog.data ?? []).map((genre) => [genre.id, genre]))
   const featured = trending.data?.find((title) => title.backdropUrl)
-  const watchlist = titles.filter((title) => title.status === "watchlist")
-  const watching = titles.filter((title) => title.status === "watching")
-  const watched = titles.filter((title) => title.status === "watched")
-  const savedKeys = new Set(titles.map(titleKey))
+  const savedKeys = new Set(archive.map(titleKey))
 
   return (
     <main className="pb-24">
@@ -257,15 +276,15 @@ export function HomePage({
         loading={trending.isLoading}
         error={trending.isError}
         onRetry={() => void trending.refetch()}
-        savedTitles={titles}
+        archive={archive}
         onSave={onSave}
         showArchiveStatus={signedIn}
         enter
       />
-      <PosterRail title="Now in theatres" titles={theatres.data ?? []} loading={theatres.isLoading} error={theatres.isError} onRetry={() => void theatres.refetch()} savedTitles={titles} onSave={onSave} showArchiveStatus={signedIn} />
-      <PosterRail title="Popular movies" titles={movies.data ?? []} loading={movies.isLoading} error={movies.isError} onRetry={() => void movies.refetch()} savedTitles={titles} onSave={onSave} showArchiveStatus={signedIn} />
-      <PosterRail title="Popular TV" titles={shows.data ?? []} loading={shows.isLoading} error={shows.isError} onRetry={() => void shows.refetch()} savedTitles={titles} onSave={onSave} showArchiveStatus={signedIn} />
-      <PosterRail title="Coming soon" titles={upcoming.data ?? []} loading={upcoming.isLoading} error={upcoming.isError} onRetry={() => void upcoming.refetch()} metaFor={releaseLabel} savedTitles={titles} onSave={onSave} showArchiveStatus={signedIn} />
+      <PosterRail title="Now in theatres" titles={theatres.data ?? []} loading={theatres.isLoading} error={theatres.isError} onRetry={() => void theatres.refetch()} archive={archive} onSave={onSave} showArchiveStatus={signedIn} />
+      <PosterRail title="Popular movies" titles={movies.data ?? []} loading={movies.isLoading} error={movies.isError} onRetry={() => void movies.refetch()} archive={archive} onSave={onSave} showArchiveStatus={signedIn} />
+      <PosterRail title="Popular TV" titles={shows.data ?? []} loading={shows.isLoading} error={shows.isError} onRetry={() => void shows.refetch()} archive={archive} onSave={onSave} showArchiveStatus={signedIn} />
+      <PosterRail title="Coming soon" titles={upcoming.data ?? []} loading={upcoming.isLoading} error={upcoming.isError} onRetry={() => void upcoming.refetch()} metaFor={releaseLabel} archive={archive} onSave={onSave} showArchiveStatus={signedIn} />
 
       <section className="mt-20">
         <div className="section-heading">
@@ -296,33 +315,24 @@ export function HomePage({
             YOUR COLLECTION
           </p>
           <h2 className="mt-3 font-display text-display-md font-normal">My stubs</h2>
-          {loading ? (
-            <div className="skeleton-pulse mt-6 h-36 bg-surface" />
-          ) : (
-            <>
-              <StubRack
-                heading="Watchlist"
-                titles={watchlist}
-                justStamped={justStamped}
-                onMarkWatched={onMarkWatched}
-                onToggleFavorite={onToggleFavorite}
-              />
-              <StubRack
-                heading="Currently watching"
-                titles={watching}
-                justStamped={justStamped}
-                onMarkWatched={onMarkWatched}
-                onToggleFavorite={onToggleFavorite}
-              />
-              <StubRack
-                heading="Watched"
-                titles={watched}
-                justStamped={justStamped}
-                onMarkWatched={onMarkWatched}
-                onToggleFavorite={onToggleFavorite}
-              />
-            </>
-          )}
+          {(
+            [
+              ["Watchlist", watchlist],
+              ["Currently watching", watching],
+              ["Watched", watched],
+            ] as const
+          ).map(([heading, rack]) => (
+            <StubRack
+              key={heading}
+              heading={heading}
+              titles={rack.data?.titles ?? []}
+              total={rack.data?.total ?? 0}
+              loading={rack.isLoading}
+              justStamped={justStamped}
+              onMarkWatched={onMarkWatched}
+              onToggleFavorite={onToggleFavorite}
+            />
+          ))}
         </section>
       ) : (
         <div className="mt-24 max-w-xl border-t border-border pt-10">

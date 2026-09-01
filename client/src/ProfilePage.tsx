@@ -6,76 +6,36 @@ import { Marquee } from "./Marquee"
 import { PosterRail } from "./PosterRail"
 import { genrePath } from "./paths"
 import { TicketStub } from "./TicketStub"
-import type { GenreInfo, SavedTitle, SearchHit } from "./title"
+import type { ArchiveEntry, GenreInfo, SavedTitle, SearchHit } from "./title"
 import { titleKey } from "./title"
 
 const fanTilt = [-3.2, 2.2, -1.4, 2.8, -2.4, 1.6]
 
 type ProfilePageProps = {
   displayName: string
-  titles: SavedTitle[]
-  loading: boolean
-  error: boolean
-  onRetry: () => void
-  onToggleFavorite: (title: SavedTitle) => void
+  onToggleFavorite: (entry: ArchiveEntry) => void
+}
+
+/// Aggregates are computed server-side over the whole archive; the page only
+/// receives the totals plus two short display lists.
+type ProfileStats = {
+  counts: {
+    total: number
+    watched: number
+    watchlist: number
+    watching: number
+    favorites: number
+    rated: number
+  }
+  average: number | null
+  byScore: Record<number, number>
+  genres: { name: string; count: number }[]
+  recent: SavedTitle[]
+  highlights: SavedTitle[]
 }
 
 const scores = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 const gridlines = [0, 25, 50, 75, 100]
-
-function tally(titles: SavedTitle[]) {
-  const watched = titles.filter((title) => title.status === "watched")
-  const rated = watched.filter((title) => title.score != null)
-  const average =
-    rated.length === 0
-      ? null
-      : rated.reduce((sum, title) => sum + (title.score ?? 0), 0) / rated.length
-
-  const byScore = new Map(scores.map((score) => [score, 0]))
-  for (const title of rated) {
-    if (title.score == null) continue
-    byScore.set(title.score, (byScore.get(title.score) ?? 0) + 1)
-  }
-
-  const byGenre = new Map<string, number>()
-  for (const title of watched) {
-    const names = title.genres?.length ? title.genres : title.genre ? [title.genre] : []
-    for (const name of names) {
-      byGenre.set(name, (byGenre.get(name) ?? 0) + 1)
-    }
-  }
-  const genres = [...byGenre.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
-  const favorites = titles.filter((title) => title.favorite)
-  const recent = [...watched]
-    .sort(
-      (a, b) =>
-        new Date(b.lastWatchedAt ?? b.savedAt).getTime() -
-        new Date(a.lastWatchedAt ?? a.savedAt).getTime(),
-    )
-    .slice(0, 8)
-  const highlights = (favorites.length > 0
-    ? [...favorites].sort(
-        (a, b) =>
-          new Date(b.lastWatchedAt ?? b.savedAt).getTime() -
-          new Date(a.lastWatchedAt ?? a.savedAt).getTime(),
-      )
-    : [...watched].sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
-  ).slice(0, 10)
-
-  return {
-    watched: watched.length,
-    watchlist: titles.filter((title) => title.status === "watchlist").length,
-    watching: titles.filter((title) => title.status === "watching").length,
-    favorites: favorites.length,
-    recent,
-    rated: rated.length,
-    average,
-    byScore,
-    genres,
-    highlights,
-    highlightLabel: favorites.length > 0 ? "Pinned favorites" : "Highest stamps",
-  }
-}
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -90,7 +50,7 @@ function ScoreChart({
   byScore,
   rated,
 }: {
-  byScore: Map<number, number>
+  byScore: Record<number, number>
   rated: number
 }) {
   const [grown, setGrown] = useState(false)
@@ -99,8 +59,8 @@ function ScoreChart({
     return () => cancelAnimationFrame(frame)
   }, [])
 
-  const max = Math.max(1, ...scores.map((score) => byScore.get(score) ?? 0))
-  const peakScores = scores.filter((score) => (byScore.get(score) ?? 0) === max)
+  const max = Math.max(1, ...scores.map((score) => byScore[score] ?? 0))
+  const peakScores = scores.filter((score) => (byScore[score] ?? 0) === max)
   const scoreInsight =
     rated === 0
       ? "Rate a stamped title to start your score pattern."
@@ -132,7 +92,7 @@ function ScoreChart({
         ))}
         <div className="absolute inset-0 flex items-end gap-2">
           {scores.map((score) => {
-            const count = byScore.get(score) ?? 0
+            const count = byScore[score] ?? 0
             const height = count === 0 ? 0 : (count / max) * 100
             return (
               <div
@@ -166,25 +126,28 @@ function ScoreChart({
   )
 }
 
-export function ProfilePage({
-  displayName,
-  titles,
-  loading,
-  error,
-  onRetry,
-  onToggleFavorite,
-}: ProfilePageProps) {
+export function ProfilePage({ displayName, onToggleFavorite }: ProfilePageProps) {
   const catalog = useQuery({
     queryKey: ["genres"],
     queryFn: () => fetchJson<GenreInfo[]>("/api/genres"),
     staleTime: 1000 * 60 * 60,
   })
-  const stats = tally(titles)
-  const maxGenre = Math.max(1, ...stats.genres.map(([, count]) => count))
+  const profile = useQuery({
+    queryKey: ["profile", "stats"],
+    queryFn: () => fetchJson<ProfileStats>("/api/profile/stats"),
+  })
+
+  const loading = profile.isLoading
+  const error = profile.isError
+  const stats = profile.data
+  const counts = stats?.counts
+  const highlightLabel =
+    counts && counts.favorites > 0 ? "Pinned favorites" : "Highest stamps"
+  const maxGenre = Math.max(1, ...(stats?.genres ?? []).map((genre) => genre.count))
   const genreByName = new Map(
     (catalog.data ?? []).map((genre) => [genre.name, genre]),
   )
-  const highlights: SearchHit[] = stats.highlights.map((title) => ({
+  const highlights: SearchHit[] = (stats?.highlights ?? []).map((title) => ({
     tmdbId: title.tmdbId,
     mediaType: title.mediaType,
     title: title.title,
@@ -203,10 +166,11 @@ export function ProfilePage({
         <div>
           <p className="font-mono text-[10px] tracking-[0.16em] text-accent">TASTE</p>
           <h1 className="mt-3 font-display text-display-lg font-normal">{displayName}</h1>
-          {!loading && !error && (
+          {counts && (
             <p className="mt-4 font-mono text-[11px] tracking-[0.08em] text-text-dim">
-              {stats.watched} WATCHED · {stats.watching} WATCHING · {stats.watchlist} ON THE
-              LIST · {stats.favorites} {stats.favorites === 1 ? "FAVORITE" : "FAVORITES"}
+              {counts.watched} WATCHED · {counts.watching} WATCHING ·{" "}
+              {counts.watchlist} ON THE LIST · {counts.favorites}{" "}
+              {counts.favorites === 1 ? "FAVORITE" : "FAVORITES"}
             </p>
           )}
         </div>
@@ -223,18 +187,22 @@ export function ProfilePage({
         <div className="collection-state">
           <h2>Profile unavailable</h2>
           <p>Your collection could not be loaded.</p>
-          <button type="button" className="button-primary" onClick={onRetry}>
+          <button
+            type="button"
+            className="button-primary"
+            onClick={() => void profile.refetch()}
+          >
             Retry
           </button>
         </div>
-      ) : stats.watched === 0 && titles.length > 0 ? (
+      ) : !stats || !counts ? null : counts.watched === 0 && counts.total > 0 ? (
         <div className="profile-empty">
           <div className="stub-ghost" aria-hidden="true" />
           <div>
             <h2>Your first feature is queued</h2>
             <p>
-              You have {stats.watching + stats.watchlist}{" "}
-              {stats.watching + stats.watchlist === 1 ? "title" : "titles"} waiting, but
+              You have {counts.watching + counts.watchlist}{" "}
+              {counts.watching + counts.watchlist === 1 ? "title" : "titles"} waiting, but
               nothing stamped yet.
             </p>
             <Link to="/collection/watchlist" className="button-primary">
@@ -242,7 +210,7 @@ export function ProfilePage({
             </Link>
           </div>
         </div>
-      ) : stats.watched === 0 ? (
+      ) : counts.watched === 0 ? (
         <div className="profile-empty">
           <div className="stub-ghost" aria-hidden="true" />
           <div>
@@ -257,15 +225,18 @@ export function ProfilePage({
         <>
           <div className="mt-12">
             <div className="profile-stat-strip enter">
-              <Stat label="WATCHED" value={String(stats.watched)} />
+              <Stat label="WATCHED" value={String(counts.watched)} />
               <Stat
                 label="AVERAGE"
                 value={stats.average == null ? "—" : stats.average.toFixed(1)}
               />
-              <Stat label={stats.favorites === 1 ? "FAVORITE" : "FAVORITES"} value={String(stats.favorites)} />
+              <Stat
+                label={counts.favorites === 1 ? "FAVORITE" : "FAVORITES"}
+                value={String(counts.favorites)}
+              />
             </div>
             <div className="enter enter-2">
-              <ScoreChart byScore={stats.byScore} rated={stats.rated} />
+              <ScoreChart byScore={stats.byScore} rated={counts.rated} />
             </div>
           </div>
 
@@ -307,7 +278,7 @@ export function ProfilePage({
                 Genres are ranked by how often they appear in your stamped archive.
               </p>
               <ol>
-                {stats.genres.map(([name, count], index) => (
+                {stats.genres.map(({ name, count }, index) => (
                   <li key={name}>
                     <span className="profile-genre-rank">
                       {String(index + 1).padStart(2, "0")}
@@ -331,7 +302,7 @@ export function ProfilePage({
             </div>
             <div className="profile-highlights">
               <PosterRail
-                title={stats.highlightLabel}
+                title={highlightLabel}
                 titles={highlights}
                 compact
                 metaFor={(item) => {

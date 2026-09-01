@@ -17,18 +17,18 @@ import { TvProgressEditor } from "./TvProgressEditor"
 import type {
   CollectionList,
   MediaType,
-  SavedTitle,
+  ArchiveEntry,
   SearchHit,
   TitleDetail,
 } from "./title"
 import { titleKey } from "./title"
 
 type DetailPageProps = {
-  savedTitles: SavedTitle[]
-  savedTitlesLoading: boolean
+  archive: ArchiveEntry[]
+  archiveLoading: boolean
   signedIn: boolean
   onSave: (title: SearchHit | TitleDetail) => void
-  onMarkWatched: (tmdbId: number, mediaType: MediaType) => void
+  onMarkWatched: (tmdbId: number, mediaType: MediaType, name: string) => void
   onRemove: (tmdbId: number, mediaType: MediaType) => Promise<void>
   onRate: (
     tmdbId: number,
@@ -36,7 +36,7 @@ type DetailPageProps = {
     score: number,
     note: string | null,
   ) => Promise<void>
-  onToggleFavorite: (title: SavedTitle) => void
+  onToggleFavorite: (entry: ArchiveEntry) => void
   onUpdateProgress: (
     tmdbId: number,
     season: number,
@@ -83,8 +83,8 @@ function ScorePad({
 }
 
 export function DetailPage({
-  savedTitles,
-  savedTitlesLoading,
+  archive,
+  archiveLoading,
   signedIn,
   onSave,
   onMarkWatched,
@@ -144,7 +144,7 @@ export function DetailPage({
   })
   const title = detail.data
   const saved = title
-    ? savedTitles.find((item) => titleKey(item) === titleKey(title))
+    ? archive.find((item) => titleKey(item) === titleKey(title))
     : undefined
 
   useEffect(() => {
@@ -304,7 +304,7 @@ export function DetailPage({
           </div>
 
           <div className="mt-4 flex flex-col gap-2">
-            {signedIn && savedTitlesLoading && (
+            {signedIn && archiveLoading && (
               <button
                 type="button"
                 disabled
@@ -313,7 +313,7 @@ export function DetailPage({
                 CHECKING ARCHIVE…
               </button>
             )}
-            {!savedTitlesLoading && !saved && (
+            {!archiveLoading && !saved && (
               <button
                 type="button"
                 onClick={() => onSave(title)}
@@ -327,7 +327,7 @@ export function DetailPage({
                 <p className="detail-status">IN WATCHLIST</p>
                 <button
                   type="button"
-                  onClick={() => onMarkWatched(title.tmdbId, title.mediaType)}
+                  onClick={() => onMarkWatched(title.tmdbId, title.mediaType, title.title)}
                   className="button-primary w-full min-h-11 px-4 py-3 text-body-sm font-semibold"
                 >
                   Mark watched & rate
@@ -344,7 +344,7 @@ export function DetailPage({
                 </p>
                 <button
                   type="button"
-                  onClick={() => onMarkWatched(title.tmdbId, title.mediaType)}
+                  onClick={() => onMarkWatched(title.tmdbId, title.mediaType, title.title)}
                   className="button-primary w-full min-h-11 px-4 py-3 text-body-sm font-semibold"
                 >
                   Finish & rate
@@ -424,7 +424,8 @@ export function DetailPage({
           {saved?.mediaType === "tv" && saved.status !== "watched" && (
             <TvProgressEditor
               key={`${saved.tmdbId}-${saved.progress?.season}-${saved.progress?.episode}`}
-              title={saved}
+              seasonOptions={title.seasonOptions}
+              progress={saved.progress}
               mode="detail"
               onUpdate={(season, episode) =>
                 onUpdateProgress(saved.tmdbId, season, episode)
@@ -599,7 +600,7 @@ export function DetailPage({
         loading={similar.isLoading}
         error={similar.isError}
         onRetry={() => void similar.refetch()}
-        savedTitles={savedTitles}
+        archive={archive}
         onSave={onSave}
         showArchiveStatus={signedIn}
       />

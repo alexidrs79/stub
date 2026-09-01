@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 import { fetchJson } from "./api"
 import { SearchPage } from "./SearchPage"
-import type { SavedTitle, SearchHit } from "./title"
+import type { ArchiveEntry, SearchHit } from "./title"
 
 vi.mock("./api", () => ({ fetchJson: vi.fn() }))
 
@@ -21,10 +21,9 @@ const hit: SearchHit = {
   voteAverage: 8.4,
 }
 
-const saved: SavedTitle = {
-  ...hit,
-  runtime: "139 MIN",
-  genres: ["DRAMA"],
+const saved: ArchiveEntry = {
+  tmdbId: hit.tmdbId,
+  mediaType: hit.mediaType,
   status: "watchlist",
   score: null,
   note: null,
@@ -34,7 +33,6 @@ const saved: SavedTitle = {
   lastWatchedAt: null,
   savedAt: "2026-09-01T00:00:00.000Z",
   customListIds: [],
-  seasonOptions: [],
 }
 
 function renderPage(onRemove: (tmdbId: number, mediaType: "movie" | "tv") => Promise<void>) {
@@ -45,7 +43,7 @@ function renderPage(onRemove: (tmdbId: number, mediaType: "movie" | "tv") => Pro
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={["/search?q=Fight"]}>
         <SearchPage
-          savedTitles={[saved]}
+          archive={[saved]}
           onSave={vi.fn()}
           onRemove={onRemove}
         />

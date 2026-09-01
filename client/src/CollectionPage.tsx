@@ -7,19 +7,19 @@ import { TvProgressEditor } from "./TvProgressEditor"
 import { setPageMeta } from "./pageMeta"
 import { listIdFromSlug, listPath } from "./paths"
 import type {
+  ArchiveEntry,
+  ArchiveSort,
+  ArchiveView,
   CollectionList,
   CustomCollection,
   MediaType,
   SavedTitle,
 } from "./title"
+import { useArchivePage } from "./useArchive"
 
 type CollectionPageProps = {
-  titles: SavedTitle[]
-  loading: boolean
-  error: boolean
-  onRetry: () => void
-  onMarkWatched: (tmdbId: number, mediaType: MediaType) => void
-  onToggleFavorite: (title: SavedTitle) => void
+  onMarkWatched: (tmdbId: number, mediaType: MediaType, name: string) => void
+  onToggleFavorite: (entry: ArchiveEntry) => void
   onUpdateProgress: (
     tmdbId: number,
     season: number,
@@ -27,8 +27,9 @@ type CollectionPageProps = {
   ) => Promise<void>
 }
 
-type Sort = "added" | "title" | "year" | "score"
 type Filter = "all" | MediaType
+
+const PAGE_SIZE = 48
 
 const views = [
   {
@@ -69,13 +70,6 @@ const views = [
   },
 ] as const
 
-function viewTitles(view: string, titles: SavedTitle[]) {
-  if (view === "watching") return titles.filter((title) => title.status === "watching")
-  if (view === "watched") return titles.filter((title) => title.status === "watched")
-  if (view === "favorites") return titles.filter((title) => title.favorite)
-  return titles.filter((title) => title.status === "watchlist")
-}
-
 function titleDate(title: SavedTitle) {
   const value = title.lastWatchedAt ?? title.savedAt
   const date = new Date(value)
@@ -85,10 +79,6 @@ function titleDate(title: SavedTitle) {
 }
 
 export function CollectionPage({
-  titles,
-  loading,
-  error,
-  onRetry,
   onMarkWatched,
   onToggleFavorite,
   onUpdateProgress,
@@ -98,8 +88,9 @@ export function CollectionPage({
   const navigate = useNavigate()
   const location = useLocation()
   const queryClient = useQueryClient()
-  const [sort, setSort] = useState<Sort>("added")
+  const [sort, setSort] = useState<ArchiveSort>("added")
   const [filter, setFilter] = useState<Filter>("all")
+  const [pager, setPager] = useState({ scope: "", page: 1 })
   const [newName, setNewName] = useState("")
   const [editingName, setEditingName] = useState("")
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -160,16 +151,40 @@ export function CollectionPage({
     },
   })
 
-  const source = listId ? (custom.data?.titles ?? []) : viewTitles(view, titles)
-  const visible = source
+  const isView = !listId && (views as readonly { id: string }[]).some(
+    (item) => item.id === view,
+  )
+  // Page 4 of one sort is not page 4 of the next, so changing the view, sort,
+  // or filter starts over. Derived rather than reset in an effect.
+  const scope = `${listRef ?? view}|${sort}|${filter}`
+  const pageNumber = pager.scope === scope ? pager.page : 1
+  const goToPage = (next: number) => setPager({ scope, page: Math.max(1, next) })
+  // The default views page and sort on the server; a custom list is small
+  // enough to arrive whole and is arranged here.
+  const archivePage = useArchivePage(view as ArchiveView, {
+    page: pageNumber,
+    pageSize: PAGE_SIZE,
+    sort,
+    mediaType: filter === "all" ? null : filter,
+    enabled: isView,
+  })
+
+  const customTitles = (custom.data?.titles ?? [])
     .filter((title) => filter === "all" || title.mediaType === filter)
     .sort((a, b) => {
       if (sort === "title") return a.title.localeCompare(b.title)
       if (sort === "year") return (b.year ?? 0) - (a.year ?? 0)
       if (sort === "score") return (b.score ?? -1) - (a.score ?? -1)
-      return new Date(b.lastWatchedAt ?? b.savedAt).getTime() -
+      return (
+        new Date(b.lastWatchedAt ?? b.savedAt).getTime() -
         new Date(a.lastWatchedAt ?? a.savedAt).getTime()
+      )
     })
+
+  const visible = listId ? customTitles : (archivePage.data?.titles ?? [])
+  const total = listId ? customTitles.length : (archivePage.data?.total ?? 0)
+  const hasMore = listId ? false : Boolean(archivePage.data?.hasMore)
+  const filtered = filter !== "all"
 
   const activeView = views.find((item) => item.id === view) ?? views[0]
   const currentLabel = listId
@@ -184,8 +199,10 @@ export function CollectionPage({
         emptyBody: "Open any title and add it to this list.",
       }
     : activeView
-  const pageLoading = loading || collections.isLoading || (Boolean(listId) && custom.isLoading)
-  const pageError = error || collections.isError || custom.isError
+  const pageLoading =
+    collections.isLoading ||
+    (listId ? custom.isLoading : archivePage.isLoading)
+  const pageError = collections.isError || custom.isError || archivePage.isError
   const listActionError =
     renameList.error ?? deleteList.error ?? removeFromList.error
 
@@ -206,6 +223,7 @@ export function CollectionPage({
       navigate("/collection/watchlist", { replace: true })
     }
   }, [listRef, navigate, view])
+
 
   useEffect(() => {
     if (!custom.data) return
@@ -294,7 +312,7 @@ export function CollectionPage({
             </label>
             <label>
               <span className="sr-only">Sort collection</span>
-              <select value={sort} onChange={(event) => setSort(event.target.value as Sort)}>
+              <select value={sort} onChange={(event) => setSort(event.target.value as ArchiveSort)}>
                 <option value="added">RECENTLY ADDED</option>
                 <option value="title">TITLE A–Z</option>
                 <option value="year">YEAR</option>
@@ -374,15 +392,15 @@ export function CollectionPage({
                 type="button"
                 className="button-primary"
                 onClick={() => {
-                  onRetry()
-                  collections.refetch()
-                  if (listId) custom.refetch()
+                  void collections.refetch()
+                  if (listId) void custom.refetch()
+                  else void archivePage.refetch()
                 }}
               >
                 Retry
               </button>
             </div>
-          ) : visible.length === 0 && source.length > 0 ? (
+          ) : visible.length === 0 && filtered ? (
             <div className="collection-state">
               <h2>Nothing matches this filter</h2>
               <p>
@@ -418,7 +436,8 @@ export function CollectionPage({
                     {title.mediaType === "tv" && title.status !== "watched" && (
                       <TvProgressEditor
                         key={`${title.tmdbId}-${title.progress?.season}-${title.progress?.episode}`}
-                        title={title}
+                        seasonOptions={title.seasonOptions}
+                        progress={title.progress}
                         mode="collection"
                         onUpdate={(season, episode) =>
                           onUpdateProgress(title.tmdbId, season, episode)
@@ -461,6 +480,33 @@ export function CollectionPage({
               ))}
             </div>
           )}
+
+          {!pageLoading && !pageError && visible.length > 0 && !listId && total > PAGE_SIZE && (
+            <nav className="collection-pager" aria-label="Collection pages">
+              <button
+                type="button"
+                className="button-outline"
+                disabled={pageNumber === 1 || archivePage.isFetching}
+                onClick={() => goToPage(pageNumber - 1)}
+              >
+                ← NEWER
+              </button>
+              <p aria-live="polite">
+                {(pageNumber - 1) * PAGE_SIZE + 1}–{(pageNumber - 1) * PAGE_SIZE + visible.length}{" "}
+                OF{" "}
+                {total}
+              </p>
+              <button
+                type="button"
+                className="button-outline"
+                disabled={!hasMore || archivePage.isFetching}
+                onClick={() => goToPage(pageNumber + 1)}
+              >
+                OLDER →
+              </button>
+            </nav>
+          )}
+
         </section>
       </div>
     </main>

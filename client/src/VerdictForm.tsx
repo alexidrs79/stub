@@ -1,13 +1,18 @@
 import { useId, useState, type FormEvent } from "react"
+import { dayToIso, localDateKey } from "./dates"
 
 type VerdictFormProps = {
   initialScore?: number | null
   initialNote?: string | null
+  initialDate?: string | null
+  /// Shown when the form sets a stamp's date, hidden when it only edits a
+  /// verdict from the detail page.
+  showDate?: boolean
   submitLabel: string
   pendingLabel: string
   pending?: boolean
   error?: string | null
-  onSubmit: (score: number, note: string | null) => Promise<void>
+  onSubmit: (score: number, note: string | null, watchedAt?: string) => Promise<void>
   onCancel?: () => void
   autoFocus?: boolean
 }
@@ -15,6 +20,8 @@ type VerdictFormProps = {
 export function VerdictForm({
   initialScore = null,
   initialNote = null,
+  initialDate = null,
+  showDate = false,
   submitLabel,
   pendingLabel,
   pending = false,
@@ -25,12 +32,18 @@ export function VerdictForm({
 }: VerdictFormProps) {
   const [score, setScore] = useState<number | null>(initialScore)
   const [note, setNote] = useState(initialNote ?? "")
+  const [day, setDay] = useState(initialDate ?? localDateKey())
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [localError, setLocalError] = useState("")
   const noteId = useId()
+  const dateId = useId()
   const cleanNote = note.trim() || null
-  const dirty = score !== initialScore || cleanNote !== (initialNote || null)
+  const baseDate = initialDate ?? localDateKey()
+  const dirty =
+    score !== initialScore ||
+    cleanNote !== (initialNote || null) ||
+    (showDate && day !== baseDate)
   const busy = pending || submitting
 
   async function submit(event: FormEvent) {
@@ -39,8 +52,19 @@ export function VerdictForm({
     if (score == null) return
     setSubmitting(true)
     setLocalError("")
+    if (showDate && !day) {
+      setLocalError("CHOOSE A WATCH DATE")
+      setSubmitting(false)
+      return
+    }
     try {
-      await onSubmit(score, cleanNote)
+      // An unchanged date means "now", which the server timestamps itself and
+      // keeps the time of day rather than flattening it to midday.
+      await onSubmit(
+        score,
+        cleanNote,
+        showDate && day !== baseDate ? dayToIso(day) : undefined,
+      )
       setSubmitted(false)
     } catch (submitError) {
       setLocalError(
@@ -77,6 +101,21 @@ export function VerdictForm({
           ))}
         </div>
 
+        {showDate && (
+          <div className="mt-6">
+            <label htmlFor={dateId} className="verdict-label">
+              WATCHED ON
+            </label>
+            <input
+              id={dateId}
+              type="date"
+              value={day}
+              max={localDateKey()}
+              onChange={(event) => setDay(event.target.value)}
+              className="field-input mt-2"
+            />
+          </div>
+        )}
         <div className="mt-6 flex items-baseline justify-between gap-4">
           <label htmlFor={noteId} className="verdict-label">
             NOTE · OPTIONAL

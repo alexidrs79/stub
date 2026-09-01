@@ -1,40 +1,22 @@
 import type { Request, Response } from "express"
-import { readUserId } from "./auth.js"
+import { requireUser } from "./auth.js"
 import { prisma } from "./db.js"
-import { getTitleCard, type MediaType, type TitleCard } from "./tmdb.js"
+import {
+  buildArchiveEntries,
+  parseWatchedAt,
+  ensureDefaultLists,
+  hydrateEntries,
+  listArchiveItems,
+  savedOne,
+} from "./archive.js"
+import { getTitleCards } from "./title-cache.js"
+import type { MediaType } from "./tmdb.js"
 import {
   removeFromArchive,
   transitionToWatched,
   transitionToWatchlist,
   updateWatchedVerdict,
 } from "./watch-state.js"
-
-export type ListKind = "watchlist" | "watching" | "watched"
-
-export type SavedTitle = TitleCard & {
-  status: ListKind
-  score: number | null
-  note: string | null
-  serial: string
-  favorite: boolean
-  progress: { season: number; episode: number } | null
-  lastWatchedAt: string | null
-  savedAt: string
-  customListIds: string[]
-}
-
-function serialOf(tmdbId: number) {
-  return String(tmdbId).padStart(5, "0").slice(-5)
-}
-
-export async function requireUser(req: Request, res: Response) {
-  const userId = await readUserId(req)
-  if (!userId) {
-    res.status(401).json({ error: "Not logged in." })
-    return null
-  }
-  return userId
-}
 
 function parseRef(body: { tmdbId?: unknown; mediaType?: unknown } | undefined) {
   if (typeof body?.tmdbId !== "number") return null
@@ -43,6 +25,10 @@ function parseRef(body: { tmdbId?: unknown; mediaType?: unknown } | undefined) {
   if (!Number.isInteger(tmdbId) || tmdbId <= 0) return null
   if (mediaType !== "movie" && mediaType !== "tv") return null
   return { tmdbId, mediaType: mediaType as MediaType }
+}
+
+function parseMediaTypeValue(value: unknown) {
+  return value === "movie" || value === "tv" ? value : null
 }
 
 function parsePathRef(mediaType: string, id: string) {
@@ -65,193 +51,111 @@ function parseNote(value: unknown) {
   return { valid: true, note: note || null }
 }
 
-export async function ensureDefaultLists(userId: string) {
-  const existing = await prisma.list.findMany({ where: { userId } })
-  const create: { name: string; type: ListKind }[] = []
-  if (!existing.some((list) => list.type === "watchlist")) {
-    create.push({ name: "Watchlist", type: "watchlist" })
-  }
-  if (!existing.some((list) => list.type === "watched")) {
-    create.push({ name: "Watched", type: "watched" })
-  }
-  if (!existing.some((list) => list.type === "watching")) {
-    create.push({ name: "Watching", type: "watching" })
-  }
-  if (create.length > 0) {
-    await prisma.list.createMany({
-      data: create.map((list) => ({ ...list, userId })),
-      skipDuplicates: true,
-    })
-  }
-  const lists = await prisma.list.findMany({ where: { userId } })
-  const watchlist = lists.find((list) => list.type === "watchlist")
-  const watching = lists.find((list) => list.type === "watching")
-  const watched = lists.find((list) => list.type === "watched")
-  if (!watchlist || !watching || !watched) throw new Error("Default lists missing")
-  return { watchlist, watching, watched }
+const VIEWS = ["watchlist", "watching", "watched", "favorites"] as const
+type ArchiveView = (typeof VIEWS)[number]
+
+const SORTS = ["added", "title", "year", "score"] as const
+type ArchiveSort = (typeof SORTS)[number]
+
+/// Sorting by title or year needs card data, so those two orders read the title
+/// cache for the matching set. The other two sort on archive fields alone.
+const CARD_SORTS: ArchiveSort[] = ["title", "year"]
+
+const DEFAULT_PAGE_SIZE = 48
+const MAX_PAGE_SIZE = 100
+
+function parsePageSize(value: unknown) {
+  if (value == null || value === "") return DEFAULT_PAGE_SIZE
+  const size = Number(value)
+  if (!Number.isInteger(size) || size < 1) return null
+  return Math.min(size, MAX_PAGE_SIZE)
 }
 
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  mapper: (item: T, index: number) => Promise<R>,
-) {
-  const results: R[] = []
-  let nextIndex = 0
-  async function worker() {
-    while (nextIndex < items.length) {
-      const index = nextIndex
-      nextIndex += 1
-      results[index] = await mapper(items[index], index)
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, () => worker()),
-  )
-  return results
+function parsePage(value: unknown) {
+  if (value == null || value === "") return 1
+  const page = Number(value)
+  return Number.isInteger(page) && page >= 1 ? page : null
 }
 
-export async function hydrateTitles(
-  userId: string,
-  items: {
-    tmdbId: number
-    mediaType: string
-    status: ListKind
-    addedAt?: Date
-  }[],
-): Promise<SavedTitle[]> {
-  const [ratings, favorites, progress, watchEvents, customItems] = await Promise.all([
-    prisma.rating.findMany({ where: { userId } }),
-    prisma.favorite.findMany({ where: { userId } }),
-    prisma.viewingProgress.findMany({ where: { userId } }),
-    prisma.watchEvent.findMany({
-      where: { userId },
-      orderBy: { watchedAt: "desc" },
-    }),
-    prisma.listItem.findMany({
-      where: { list: { userId, type: "custom" } },
-      select: { listId: true, tmdbId: true, mediaType: true },
-    }),
-  ])
-  const ratingKey = (tmdbId: number, mediaType: string) => `${mediaType}-${tmdbId}`
-  const ratingMap = new Map(
-    ratings.map((rating) => [ratingKey(rating.tmdbId, rating.mediaType), rating]),
-  )
-  const favoriteKeys = new Set(
-    favorites.map((favorite) => ratingKey(favorite.tmdbId, favorite.mediaType)),
-  )
-  const progressMap = new Map(
-    progress.map((item) => [ratingKey(item.tmdbId, item.mediaType), item]),
-  )
-  const eventsByTitle = new Map<string, typeof watchEvents>()
-  for (const event of watchEvents) {
-    const key = ratingKey(event.tmdbId, event.mediaType)
-    eventsByTitle.set(key, [...(eventsByTitle.get(key) ?? []), event])
-  }
-  const customListsByTitle = new Map<string, string[]>()
-  for (const item of customItems) {
-    const key = ratingKey(item.tmdbId, item.mediaType)
-    customListsByTitle.set(key, [...(customListsByTitle.get(key) ?? []), item.listId])
-  }
-
-  const cards = await mapWithConcurrency(
-    items,
-    8,
-    async (item) => {
-      const mediaType = item.mediaType as MediaType
-      try {
-        return await getTitleCard(mediaType, item.tmdbId)
-      } catch {
-        return {
-          tmdbId: item.tmdbId,
-          mediaType,
-          title: "Untitled",
-          year: null,
-          runtime: "—",
-          genre: mediaType.toUpperCase(),
-          genres: [mediaType.toUpperCase()],
-          posterUrl: null,
-          backdropUrl: null,
-          voteAverage: null,
-          seasonOptions: [],
-        } satisfies TitleCard
-      }
-    },
-  )
-
-  return cards.map((card, index) => {
-    const status = items[index].status
-    const key = ratingKey(card.tmdbId, card.mediaType)
-    const rating = ratingMap.get(key)
-    const titleEvents = eventsByTitle.get(key) ?? []
-    const titleProgress = progressMap.get(key)
-    const progressSeason = card.seasonOptions.find(
-      (option) => option.season === titleProgress?.season,
-    )
-    const validProgress =
-      titleProgress &&
-      progressSeason &&
-      titleProgress.episode >= 1 &&
-      titleProgress.episode <= progressSeason.episodeCount
-        ? { season: titleProgress.season, episode: titleProgress.episode }
-        : null
-    return {
-      ...card,
-      status,
-      score: status === "watched" ? (rating?.score ?? null) : null,
-      note: status === "watched" ? (rating?.note ?? null) : null,
-      serial: serialOf(card.tmdbId),
-      favorite: favoriteKeys.has(key),
-      progress: validProgress,
-      lastWatchedAt: titleEvents[0]?.watchedAt.toISOString() ?? null,
-      savedAt: (items[index].addedAt ?? new Date()).toISOString(),
-      customListIds: customListsByTitle.get(key) ?? [],
-    }
-  })
+/// Collapses the three default lists into one row per title. A title can sit in
+/// more than one during a transition, and the furthest-along status wins.
+/**
+ * The whole archive without artwork. Every page uses this to mark titles the
+ * user already saved, so it has to stay cheap: no upstream calls, no paging.
+ */
+export async function listArchiveIndex(req: Request, res: Response) {
+  const userId = await requireUser(req, res)
+  if (!userId) return
+  res.json(await buildArchiveEntries(userId, await listArchiveItems(userId)))
 }
 
-async function savedOne(
-  userId: string,
-  tmdbId: number,
-  mediaType: MediaType,
-  status: ListKind,
-): Promise<SavedTitle> {
-  const [title] = await hydrateTitles(userId, [{ tmdbId, mediaType, status }])
-  return title
-}
-
+/**
+ * One page of a collection view, with artwork. Paged because hydrating is the
+ * only part of the archive that costs anything.
+ */
 export async function listTitles(req: Request, res: Response) {
   const userId = await requireUser(req, res)
   if (!userId) return
-  const { watchlist, watching, watched } = await ensureDefaultLists(userId)
-  const items = await prisma.listItem.findMany({
-    where: { listId: { in: [watchlist.id, watching.id, watched.id] } },
-    orderBy: { addedAt: "desc" },
-  })
-  const rank: Record<ListKind, number> = { watchlist: 1, watching: 2, watched: 3 }
-  const unique = new Map<string, (typeof items)[number] & { status: ListKind }>()
-  for (const item of items) {
-    const status: ListKind =
-      item.listId === watched.id
-        ? "watched"
-        : item.listId === watching.id
-          ? "watching"
-          : "watchlist"
-    const key = `${item.mediaType}-${item.tmdbId}`
-    const current = unique.get(key)
-    if (!current || rank[status] > rank[current.status]) unique.set(key, { ...item, status })
+
+  const view = (req.query.view || "watchlist") as ArchiveView
+  const sort = (req.query.sort || "added") as ArchiveSort
+  const mediaFilter = req.query.mediaType
+  if (!VIEWS.includes(view)) {
+    res.status(400).json({ error: "Unknown view." })
+    return
   }
-  res.json(
-    await hydrateTitles(
-      userId,
-      [...unique.values()].map((item) => ({
-        tmdbId: item.tmdbId,
-        mediaType: item.mediaType,
-        status: item.status,
-        addedAt: item.addedAt,
-      })),
-    ),
-  )
+  if (!SORTS.includes(sort)) {
+    res.status(400).json({ error: "Unknown sort." })
+    return
+  }
+  if (mediaFilter != null && mediaFilter !== "" && !parseMediaTypeValue(mediaFilter)) {
+    res.status(400).json({ error: "Bad media type." })
+    return
+  }
+  const page = parsePage(req.query.page)
+  const pageSize = parsePageSize(req.query.pageSize)
+  if (page == null || pageSize == null) {
+    res.status(400).json({ error: "Bad page." })
+    return
+  }
+
+  const entries = await buildArchiveEntries(userId, await listArchiveItems(userId))
+  const matching = entries.filter((entry) => {
+    if (view === "favorites" ? !entry.favorite : entry.status !== view) return false
+    return !mediaFilter || entry.mediaType === mediaFilter
+  })
+
+  // Sorting has to run over the whole view, not the page, or paging would
+  // reorder the results as the reader walks through them.
+  let ordered = matching
+  if (CARD_SORTS.includes(sort)) {
+    const cards = await getTitleCards(matching)
+    ordered = [...matching].sort((a, b) => {
+      const left = cards.get(`${a.mediaType}-${a.tmdbId}`)
+      const right = cards.get(`${b.mediaType}-${b.tmdbId}`)
+      if (sort === "year") return (right?.year ?? 0) - (left?.year ?? 0)
+      return (left?.title ?? "").localeCompare(right?.title ?? "")
+    })
+  } else if (sort === "score") {
+    ordered = [...matching].sort((a, b) => (b.score ?? -1) - (a.score ?? -1))
+  } else {
+    ordered = [...matching].sort(
+      (a, b) =>
+        new Date(b.lastWatchedAt ?? b.savedAt).getTime() -
+        new Date(a.lastWatchedAt ?? a.savedAt).getTime(),
+    )
+  }
+
+  const start = (page - 1) * pageSize
+  const slice = ordered.slice(start, start + pageSize)
+
+  res.json({
+    titles: await hydrateEntries(slice),
+    page,
+    pageSize,
+    total: ordered.length,
+    hasMore: start + slice.length < ordered.length,
+  })
 }
 
 export async function addToWatchlist(req: Request, res: Response) {
@@ -279,27 +183,34 @@ export async function markWatched(req: Request, res: Response) {
   const ref = parseRef(req.body)
   const score = typeof req.body?.score === "number" ? req.body.score : Number.NaN
   const parsedNote = parseNote(req.body?.note)
+  const parsedDate = parseWatchedAt(req.body?.watchedAt)
   if (
     !ref ||
     !Number.isInteger(score) ||
     score < 1 ||
     score > 10 ||
-    !parsedNote.valid
+    !parsedNote.valid ||
+    !parsedDate.valid
   ) {
     res.status(400).json({
-      error: parsedNote.valid
-        ? "Choose a whole-number score from 1 to 10."
-        : "Notes can contain up to 140 characters.",
+      error: !parsedNote.valid
+        ? "Notes can contain up to 140 characters."
+        : !parsedDate.valid
+          ? "Enter a watch date that is not in the future."
+          : "Choose a whole-number score from 1 to 10.",
     })
     return
   }
   const note = parsedNote.note
   const { watchlist, watching, watched } = await ensureDefaultLists(userId)
-  await transitionToWatched(userId, ref, score, note, {
-    watchlist: watchlist.id,
-    watching: watching.id,
-    watched: watched.id,
-  })
+  await transitionToWatched(
+    userId,
+    ref,
+    score,
+    note,
+    { watchlist: watchlist.id, watching: watching.id, watched: watched.id },
+    parsedDate.watchedAt,
+  )
   res.json(await savedOne(userId, ref.tmdbId, ref.mediaType, "watched"))
 }
 

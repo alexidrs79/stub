@@ -4,12 +4,12 @@ import { prisma } from "./db.js"
 import {
   ensureDefaultLists,
   hydrateTitles,
-  requireUser,
   type ListKind,
-} from "./lists.js"
-import { getTitleCard, type MediaType } from "./tmdb.js"
+} from "./archive.js"
+import { requireUser } from "./auth.js"
+import { requireTitleCard } from "./title-cache.js"
+import type { MediaType } from "./tmdb.js"
 import {
-  removeWatchEvent,
   transitionToWatching,
   transitionToWatchlist,
 } from "./watch-state.js"
@@ -290,7 +290,7 @@ export async function updateProgress(req: Request, res: Response) {
   }
   let seasonOptions
   try {
-    seasonOptions = (await getTitleCard("tv", ref.tmdbId)).seasonOptions
+    seasonOptions = (await requireTitleCard("tv", ref.tmdbId)).seasonOptions
   } catch {
     res.status(503).json({
       error: "Episode data is unavailable. Try again before saving progress.",
@@ -327,70 +327,4 @@ export async function updateProgress(req: Request, res: Response) {
       ])
     )[0],
   )
-}
-
-export async function listDiary(req: Request, res: Response) {
-  const userId = await requireUser(req, res)
-  if (!userId) return
-  const month = String(req.query.month ?? "")
-  const match = /^(\d{4})-(\d{2})$/.exec(month)
-  let watchedAt:
-    | { gte: Date; lt: Date }
-    | undefined
-  if (month && !match) {
-    res.status(400).json({ error: "Use a YYYY-MM month." })
-    return
-  }
-  if (match) {
-    const year = Number(match[1])
-    const monthIndex = Number(match[2]) - 1
-    if (monthIndex < 0 || monthIndex > 11) {
-      res.status(400).json({ error: "Use a valid month." })
-      return
-    }
-    watchedAt = {
-      gte: new Date(Date.UTC(year, monthIndex, 1)),
-      lt: new Date(Date.UTC(year, monthIndex + 1, 1)),
-    }
-  }
-  const events = await prisma.watchEvent.findMany({
-    where: { userId, watchedAt },
-    orderBy: { watchedAt: "desc" },
-    take: 200,
-  })
-  const titles = await hydrateTitles(
-    userId,
-    events.map((event) => ({
-      tmdbId: event.tmdbId,
-      mediaType: event.mediaType,
-      status: "watched",
-      addedAt: event.watchedAt,
-    })),
-  )
-  res.json(
-    events.map((event, index) => ({
-      id: event.id,
-      watchedAt: event.watchedAt.toISOString(),
-      score: event.score,
-      note: event.note,
-      title: titles[index],
-    })),
-  )
-}
-
-export async function deleteDiaryEvent(req: Request, res: Response) {
-  const userId = await requireUser(req, res)
-  if (!userId) return
-  const eventId = String(req.params.eventId)
-  const { watchlist, watching, watched } = await ensureDefaultLists(userId)
-  const result = await removeWatchEvent(userId, eventId, {
-    watchlist: watchlist.id,
-    watching: watching.id,
-    watched: watched.id,
-  })
-  if (!result) {
-    res.status(404).json({ error: "Diary stamp not found." })
-    return
-  }
-  res.json(result)
 }

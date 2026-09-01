@@ -2,9 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import { fetchJson } from "./api"
+import { localDateKey } from "./dates"
 import { MediaImage } from "./MediaImage"
 import { titlePath } from "./paths"
-import type { DiaryEvent } from "./title"
+import type { DiaryEvent, DiaryPageResponse } from "./title"
+import { ARCHIVE_INDEX_KEY } from "./useArchive"
+import { VerdictForm } from "./VerdictForm"
 
 function currentMonth() {
   const now = new Date()
@@ -20,24 +23,49 @@ function dayLabel(value: string) {
   })
 }
 
-function localDateKey(value: string) {
-  const date = new Date(value)
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0"),
-  ].join("-")
-}
-
 export function DiaryPage() {
   const queryClient = useQueryClient()
   const [month, setMonth] = useState(currentMonth)
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const removeTrigger = useRef<HTMLButtonElement | null>(null)
+  const editTrigger = useRef<HTMLButtonElement | null>(null)
   const diary = useQuery({
     queryKey: ["diary", month],
-    queryFn: () => fetchJson<DiaryEvent[]>(`/api/diary?month=${month}`),
+    queryFn: () => fetchJson<DiaryPageResponse>(`/api/diary?month=${month}`),
   })
+
+  /// A stamp edit can move an entry to another month or change the verdict the
+  /// rest of the app shows, so both the log and the archive index are dropped.
+  function invalidateAfterChange() {
+    for (const key of [["diary"], ARCHIVE_INDEX_KEY, ["archive", "page"], ["lists"], ["list"], ["profile"]]) {
+      queryClient.invalidateQueries({ queryKey: key })
+    }
+  }
+
+  const editEvent = useMutation({
+    mutationFn: (input: {
+      eventId: string
+      score: number
+      note: string | null
+      watchedAt?: string
+    }) =>
+      fetchJson<DiaryEvent>(`/api/diary/${input.eventId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          score: input.score,
+          note: input.note,
+          ...(input.watchedAt ? { watchedAt: input.watchedAt } : {}),
+        }),
+      }),
+    onSuccess: () => {
+      setEditingId(null)
+      invalidateAfterChange()
+      requestAnimationFrame(() => editTrigger.current?.focus())
+    },
+  })
+
   const removeEvent = useMutation({
     mutationFn: (eventId: string) =>
       fetchJson<{
@@ -47,10 +75,7 @@ export function DiaryPage() {
       }>(`/api/diary/${eventId}`, { method: "DELETE" }),
     onSuccess: () => {
       setConfirmingId(null)
-      queryClient.invalidateQueries({ queryKey: ["diary"] })
-      queryClient.invalidateQueries({ queryKey: ["titles"] })
-      queryClient.invalidateQueries({ queryKey: ["lists"] })
-      queryClient.invalidateQueries({ queryKey: ["list"] })
+      invalidateAfterChange()
     },
   })
 
@@ -59,8 +84,10 @@ export function DiaryPage() {
     removeEvent.reset()
     requestAnimationFrame(() => removeTrigger.current?.focus())
   }
+  const events = diary.data?.events ?? []
+  const total = diary.data?.total ?? 0
   const groups = new Map<string, DiaryEvent[]>()
-  for (const event of diary.data ?? []) {
+  for (const event of events) {
     const key = localDateKey(event.watchedAt)
     groups.set(key, [...(groups.get(key) ?? []), event])
   }
@@ -74,6 +101,11 @@ export function DiaryPage() {
           <p className="mt-4 max-w-xl text-text-dim">
             Every title you finished, in the order you stamped it.
           </p>
+          {total > 0 && (
+            <p className="mt-3 font-mono text-[11px] tracking-[0.08em] text-text-dim">
+              {total} {total === 1 ? "STAMP" : "STAMPS"} THIS MONTH
+            </p>
+          )}
         </div>
         <label className="diary-month">
           <span>MONTH</span>
@@ -139,12 +171,43 @@ export function DiaryPage() {
                         {event.score != null ? ` · ${event.score}/10` : ""}
                       </p>
                       {event.note && <p className="diary-note">“{event.note}”</p>}
+                      {editingId === event.id && (
+                        <div className="diary-edit">
+                          <VerdictForm
+                            showDate
+                            initialScore={event.score}
+                            initialNote={event.note}
+                            initialDate={localDateKey(event.watchedAt)}
+                            submitLabel="Save stamp"
+                            pendingLabel="Saving…"
+                            pending={editEvent.isPending}
+                            error={
+                              editEvent.error instanceof Error
+                                ? editEvent.error.message
+                                : null
+                            }
+                            onSubmit={async (score, note, watchedAt) => {
+                              await editEvent.mutateAsync({
+                                eventId: event.id,
+                                score,
+                                note,
+                                watchedAt,
+                              })
+                            }}
+                            onCancel={() => {
+                              setEditingId(null)
+                              editEvent.reset()
+                              requestAnimationFrame(() => editTrigger.current?.focus())
+                            }}
+                          />
+                        </div>
+                      )}
                     </div>
                     <div className="diary-entry-action">
                       {confirmingId === event.id ? (
                         <div className="diary-remove-confirm" role="group" aria-label="Remove stamp">
                           <p>
-                            If this is the only stamp, the title goes back to your
+                            Removing this stamp puts the title back on your
                             Watchlist.
                           </p>
                           <div>
@@ -173,17 +236,32 @@ export function DiaryPage() {
                           )}
                         </div>
                       ) : (
-                        <button
-                          ref={confirmingId == null ? removeTrigger : undefined}
-                          type="button"
-                          onClick={(click) => {
-                            removeTrigger.current = click.currentTarget
-                            removeEvent.reset()
-                            setConfirmingId(event.id)
-                          }}
-                        >
-                          REMOVE ENTRY
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            aria-expanded={editingId === event.id}
+                            onClick={(click) => {
+                              editTrigger.current = click.currentTarget
+                              editEvent.reset()
+                              setEditingId((current) =>
+                                current === event.id ? null : event.id,
+                              )
+                            }}
+                          >
+                            {editingId === event.id ? "CLOSE" : "EDIT ENTRY"}
+                          </button>
+                          <button
+                            ref={confirmingId == null ? removeTrigger : undefined}
+                            type="button"
+                            onClick={(click) => {
+                              removeTrigger.current = click.currentTarget
+                              removeEvent.reset()
+                              setConfirmingId(event.id)
+                            }}
+                          >
+                            REMOVE ENTRY
+                          </button>
+                        </>
                       )}
                     </div>
                   </article>

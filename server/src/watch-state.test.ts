@@ -1,8 +1,9 @@
 import assert from "node:assert/strict"
 import { after, test } from "node:test"
 import { prisma } from "./db.js"
-import { ensureDefaultLists } from "./lists.js"
+import { ensureDefaultLists } from "./archive.js"
 import {
+  editWatchEvent,
   removeFromArchive,
   removeWatchEvent,
   transitionToWatching,
@@ -98,6 +99,7 @@ test("watch history and primary collection state stay consistent", async () => {
     )
     assert.equal(await prisma.watchEvent.count({ where: { userId: user.id, ...ref } }), 1)
 
+    // Stamping again revises the one stamp rather than adding a second.
     await transitionToWatched(user.id, ref, 9, "Updated verdict.", lists)
     const events = await prisma.watchEvent.findMany({
       where: { userId: user.id, ...ref },
@@ -109,6 +111,7 @@ test("watch history and primary collection state stay consistent", async () => {
       await prisma.rating.findFirst({ where: { userId: user.id, ...ref } }).then((row) => row?.score),
       9,
     )
+
     await updateWatchedVerdict(user.id, ref, 10, "Final verdict.")
     const [rating, diaryEvent] = await Promise.all([
       prisma.rating.findUnique({
@@ -202,6 +205,103 @@ test("watch history and primary collection state stay consistent", async () => {
       }),
       0,
     )
+  } finally {
+    await prisma.user.delete({ where: { id: user.id } })
+  }
+})
+
+test("a stamp keeps the date the viewer chose", async () => {
+  const user = await prisma.user.create({
+    data: {
+      email: `watch-date-${crypto.randomUUID()}@example.test`,
+      displayName: "Watch Date Test",
+      passwordHash: "not-used",
+    },
+  })
+
+  try {
+    const lists = await ensureDefaultLists(user.id)
+    const ids = {
+      watchlist: lists.watchlist.id,
+      watching: lists.watching.id,
+      watched: lists.watched.id,
+    }
+    const ref = { tmdbId: 999_994, mediaType: "movie" as const }
+
+    const watchedOn = new Date("2024-03-04T12:00:00.000Z")
+    await transitionToWatched(user.id, ref, 7, "Caught up late.", ids, watchedOn)
+
+    const stamped = await prisma.watchEvent.findFirst({ where: { userId: user.id, ...ref } })
+    assert.ok(stamped)
+    assert.equal(stamped.watchedAt.toISOString(), watchedOn.toISOString())
+
+    // Editing moves the date and revises the verdict without adding a stamp.
+    const moved = await editWatchEvent(user.id, stamped.id, {
+      score: 9,
+      watchedAt: new Date("2020-01-01T12:00:00.000Z"),
+    })
+    assert.ok(moved)
+    const edited = await prisma.watchEvent.findFirst({ where: { userId: user.id, ...ref } })
+    assert.equal(edited?.watchedAt.toISOString(), "2020-01-01T12:00:00.000Z")
+    assert.equal(edited?.score, 9)
+    assert.equal(await prisma.watchEvent.count({ where: { userId: user.id, ...ref } }), 1)
+    // The rating mirrors the stamp, so the detail page agrees with the diary.
+    assert.equal(
+      await prisma.rating
+        .findFirst({ where: { userId: user.id, ...ref } })
+        .then((row) => row?.score),
+      9,
+    )
+
+    const stranger = await prisma.user.create({
+      data: {
+        email: `watch-date-stranger-${crypto.randomUUID()}@example.test`,
+        displayName: "Stranger",
+        passwordHash: "not-used",
+      },
+    })
+    assert.equal(await editWatchEvent(stranger.id, stamped.id, { score: 1 }), null)
+    await prisma.user.delete({ where: { id: stranger.id } })
+    assert.equal(
+      await prisma.watchEvent.findUnique({ where: { id: stamped.id } }).then((row) => row?.score),
+      9,
+    )
+  } finally {
+    await prisma.user.delete({ where: { id: user.id } })
+  }
+})
+
+test("concurrent stamps of one title collapse to a single diary entry", async () => {
+  const user = await prisma.user.create({
+    data: {
+      email: `concurrent-stamp-${crypto.randomUUID()}@example.test`,
+      displayName: "Concurrent Stamp Test",
+      passwordHash: "not-used",
+    },
+  })
+
+  try {
+    const lists = await ensureDefaultLists(user.id)
+    const ids = {
+      watchlist: lists.watchlist.id,
+      watching: lists.watching.id,
+      watched: lists.watched.id,
+    }
+    const ref = { tmdbId: 999_995, mediaType: "tv" as const }
+
+    // Several tabs stamping at once must not slip past the unique constraint.
+    await Promise.all(
+      Array.from({ length: 5 }, (_unused, index) =>
+        transitionToWatched(user.id, ref, index + 1, null, ids),
+      ),
+    )
+
+    assert.equal(await prisma.watchEvent.count({ where: { userId: user.id, ...ref } }), 1)
+    assert.equal(
+      await prisma.listItem.count({ where: { listId: ids.watched, ...ref } }),
+      1,
+    )
+    assert.equal(await prisma.rating.count({ where: { userId: user.id, ...ref } }), 1)
   } finally {
     await prisma.user.delete({ where: { id: user.id } })
   }

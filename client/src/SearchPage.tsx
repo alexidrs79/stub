@@ -5,11 +5,11 @@ import { fetchJson } from "./api"
 import { MediaImage } from "./MediaImage"
 import { titlePath } from "./paths"
 import { PosterRail } from "./PosterRail"
-import type { MediaType, SavedTitle, SearchHit, TitleDetail } from "./title"
+import type { ArchiveEntry, MediaType, SearchHit, TitleDetail } from "./title"
 import { titleKey } from "./title"
 
 type SearchPageProps = {
-  savedTitles: SavedTitle[]
+  archive: ArchiveEntry[]
   onSave: (title: SearchHit | TitleDetail) => void
   onRemove: (tmdbId: number, mediaType: MediaType) => Promise<void>
 }
@@ -31,7 +31,7 @@ function useDebounced(value: string, ms: number) {
   return debounced
 }
 
-export function SearchPage({ savedTitles, onSave, onRemove }: SearchPageProps) {
+export function SearchPage({ archive, onSave, onRemove }: SearchPageProps) {
   const [params, setParams] = useSearchParams()
   const [query, setQuery] = useState(() => params.get("q") ?? "")
   const [filter, setFilter] = useState<Filter>("all")
@@ -40,7 +40,7 @@ export function SearchPage({ savedTitles, onSave, onRemove }: SearchPageProps) {
   const [removeError, setRemoveError] = useState("")
   const lastWrittenQuery = useRef<string | null>(null)
   const debounced = useDebounced(query.trim(), 300)
-  const savedByKey = new Map(savedTitles.map((title) => [titleKey(title), title]))
+  const savedByKey = new Map(archive.map((title) => [titleKey(title), title]))
   const ready = debounced.length >= 2
   const search = useQuery({
     queryKey: ["search", debounced],

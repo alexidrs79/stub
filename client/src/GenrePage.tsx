@@ -5,11 +5,11 @@ import { ApiError, fetchJson } from "./api"
 import { MediaImage } from "./MediaImage"
 import { setPageMeta } from "./pageMeta"
 import { genrePath, slugify, titlePath } from "./paths"
-import type { GenreCatalog, GenreInfo, SavedTitle, SearchHit } from "./title"
+import type { ArchiveEntry, GenreCatalog, GenreInfo, SearchHit } from "./title"
 import { titleKey } from "./title"
 
 type GenrePageProps = {
-  savedTitles: SavedTitle[]
+  archive: ArchiveEntry[]
   signedIn: boolean
   onSave: (title: SearchHit) => void
 }
@@ -22,16 +22,16 @@ function displayName(name: string) {
 
 function PosterGrid({
   titles,
-  savedTitles,
+  archive,
   signedIn,
   onSave,
 }: {
   titles: SearchHit[]
-  savedTitles: SavedTitle[]
+  archive: ArchiveEntry[]
   signedIn: boolean
   onSave: (title: SearchHit) => void
 }) {
-  const savedByKey = new Map(savedTitles.map((title) => [titleKey(title), title]))
+  const savedByKey = new Map(archive.map((title) => [titleKey(title), title]))
 
   return (
     <div className="genre-posters">
@@ -84,7 +84,7 @@ function PosterGrid({
   )
 }
 
-export function GenrePage({ savedTitles, signedIn, onSave }: GenrePageProps) {
+export function GenrePage({ archive, signedIn, onSave }: GenrePageProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const { id, genreSlug } = useParams()
@@ -239,7 +239,7 @@ export function GenrePage({ savedTitles, signedIn, onSave }: GenrePageProps) {
           </div>
           <PosterGrid
             titles={data.movies}
-            savedTitles={savedTitles}
+            archive={archive}
             signedIn={signedIn}
             onSave={onSave}
           />
@@ -256,7 +256,7 @@ export function GenrePage({ savedTitles, signedIn, onSave }: GenrePageProps) {
           </div>
           <PosterGrid
             titles={data.shows}
-            savedTitles={savedTitles}
+            archive={archive}
             signedIn={signedIn}
             onSave={onSave}
           />
