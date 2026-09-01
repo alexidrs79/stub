@@ -1,0 +1,14 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: stub
+      POSTGRES_PASSWORD: stub
+      POSTGRES_DB: stub
+    ports:
+      - "5432:5432"
+    volumes:
+      - stub_pg:/var/lib/postgresql/data
+
+volumes:
+  stub_pg:

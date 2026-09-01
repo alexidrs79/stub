@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+
+Disallow: /profile
+Disallow: /settings
+Disallow: /collection/
+Disallow: /lists/
+Disallow: /diary
+Disallow: /login
+Disallow: /signup
+Disallow: /forgot-password
+Disallow: /reset-password
+
+Sitemap: /sitemap.xml

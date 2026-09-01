@@ -1,0 +1,308 @@
+.ticket {
+  position: relative;
+  display: flex;
+  width: 456px;
+  height: 176px;
+  flex-shrink: 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.28);
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: center bottom;
+}
+
+.ticket:hover {
+  z-index: 5;
+  border-color: var(--color-accent-dim);
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgb(0 0 0 / 0.35);
+}
+
+.ticket-tilt {
+  transform: rotate(var(--ticket-angle));
+  transform-origin: center bottom;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ticket-tilt:hover {
+  z-index: 20;
+  transform: rotate(var(--ticket-hover-angle));
+}
+
+.ticket-admit {
+  display: flex;
+  width: 32px;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0;
+  background: var(--color-surface-raised);
+}
+
+.ticket-admit span {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.ticket-admit-label {
+  letter-spacing: 0.22em;
+  color: var(--color-accent);
+}
+
+.ticket-admit-serial {
+  letter-spacing: 0.1em;
+  color: var(--color-text-dim);
+}
+
+.ticket-perf {
+  width: 12px;
+  flex-shrink: 0;
+  background-image: linear-gradient(
+    to bottom,
+    var(--color-border) 0 4px,
+    transparent 4px 10px
+  );
+  background-size: 1px 10px;
+  background-position: center top;
+  background-repeat: repeat-y;
+}
+
+.ticket-poster {
+  height: 100%;
+  aspect-ratio: 2 / 3;
+  flex: 0 0 auto;
+  object-fit: cover;
+  background: var(--color-surface-raised);
+}
+
+.ticket-poster-fallback {
+  display: grid;
+  place-items: center;
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.ticket-body {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  padding: 16px 36px 16px 16px;
+}
+
+.ticket-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 400;
+  line-height: 1.16;
+  letter-spacing: 0.01em;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ticket-title.is-long {
+  font-size: 17px;
+  line-height: 1.22;
+}
+
+.ticket-meta {
+  margin: 8px 0 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--color-text-dim);
+}
+
+.ticket-favorite {
+  position: absolute;
+  top: 12px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+  border: 0;
+  background: transparent;
+  color: var(--color-text-dim);
+}
+
+.ticket-favorite svg {
+  width: 100%;
+  height: 100%;
+  fill: transparent;
+  stroke: currentColor;
+  stroke-width: 1.2;
+}
+
+.ticket-favorite:hover,
+.ticket-favorite.is-active {
+  color: var(--color-accent);
+}
+
+.ticket-favorite.is-active svg {
+  fill: currentColor;
+}
+
+.ticket-progress {
+  margin: 7px 0 0;
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.ticket-note {
+  display: -webkit-box;
+  margin: 8px 0 0;
+  overflow: hidden;
+  color: var(--color-text-dim);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.ticket-stamp-zone {
+  display: flex;
+  width: 104px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-left: 1px dashed var(--color-border);
+  background: transparent;
+  font: inherit;
+  color: var(--color-text-dim);
+}
+
+button.ticket-stamp-zone {
+  cursor: pointer;
+}
+
+/* The zone runs the full height of the stub, so an offset ring would sit on
+   the ticket edge and get clipped. */
+.ticket-stamp-zone:focus-visible {
+  outline-offset: -2px;
+}
+
+button.ticket-stamp-zone:disabled {
+  cursor: default;
+}
+
+.ticket-stamp-tilt {
+  display: block;
+  line-height: 0;
+}
+
+.ticket-stamp {
+  width: 88px;
+  height: 88px;
+}
+
+.stamp-filled {
+  color: var(--color-stamp);
+  opacity: 0.68;
+}
+
+.stamp-empty .ticket-stamp {
+  color: var(--color-text-dim);
+  opacity: 0.5;
+  transition: opacity 160ms ease;
+}
+
+.stamp-preview {
+  fill-opacity: 0;
+  transition: fill-opacity 160ms ease;
+}
+
+button.ticket-stamp-zone:hover:not(:disabled) .ticket-stamp {
+  color: var(--color-stamp);
+  opacity: 0.9;
+}
+
+button.ticket-stamp-zone:hover:not(:disabled) .stamp-preview {
+  fill-opacity: 0.14;
+}
+
+.stamp-thump {
+  animation: stamp-thump 300ms cubic-bezier(0.2, 0.9, 0.3, 1.15);
+}
+
+@keyframes stamp-thump {
+  0% {
+    opacity: 0;
+    transform: rotate(-12deg) scale(1.5);
+  }
+  70% {
+    opacity: 1;
+    transform: rotate(4deg) scale(0.92);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(0deg) scale(1);
+  }
+}
+
+@media (max-width: 560px) {
+  .ticket {
+    width: 390px;
+    height: 164px;
+  }
+
+  .ticket-body {
+    padding: 12px 32px 12px 12px;
+  }
+
+  .ticket-title {
+    font-size: 18px;
+  }
+
+  .ticket-title.is-long {
+    font-size: 15px;
+  }
+
+  .ticket-meta {
+    font-size: 11px;
+  }
+
+  .ticket-note {
+    font-size: 11px;
+    -webkit-line-clamp: 1;
+  }
+
+  .ticket-stamp-zone {
+    width: 88px;
+  }
+
+  .ticket-stamp {
+    width: 76px;
+    height: 76px;
+  }
+
+  /* The glyph stays 18px; the padding is what gives a thumb something to hit. */
+  .ticket-favorite {
+    top: 4px;
+    right: 2px;
+    width: 40px;
+    height: 40px;
+    padding: 11px;
+  }
+}

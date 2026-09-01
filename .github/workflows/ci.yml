@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: stub_test
+          POSTGRES_USER: stub
+          POSTGRES_PASSWORD: stub
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U stub -d stub_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://stub:stub@localhost:5432/stub_test
+      JWT_SECRET: ci-only-secret-with-at-least-32-characters
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+      - run: npm --prefix client ci
+      - run: npm --prefix server ci
+      - run: npm --prefix server run db:migrate:deploy
+      - run: npm run check

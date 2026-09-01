@@ -1,0 +1,17 @@
+{
+  "name": "stub",
+  "private": true,
+  "version": "1.0.0",
+  "packageManager": "npm@10.9.8",
+  "engines": {
+    "node": "22.x",
+    "npm": "10.x"
+  },
+  "scripts": {
+    "build": "npm --prefix client ci && npm --prefix server ci && npm --prefix client run lint && npm --prefix client run build && npm --prefix server run lint && npm --prefix server run build",
+    "start": "npm --prefix server run start",
+    "db:migrate:deploy": "npm --prefix server run db:migrate:deploy",
+    "test": "npm --prefix client run test && npm --prefix server run test",
+    "check": "npm --prefix client run lint && npm --prefix client run build && npm --prefix server run lint && npm --prefix server run build && npm test"
+  }
+}
