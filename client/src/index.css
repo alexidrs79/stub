@@ -1400,58 +1400,160 @@ button.genre-chip.is-active:hover {
   font-style: italic;
 }
 
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
-  margin-top: 40px;
+/* Settings reads top to bottom in one narrow column: an account summary, then
+   one card per concern. A wide two-column grid made short forms look like a
+   dashboard and buried the destructive action beside a harmless one. */
+.settings-page {
+  max-width: 42rem;
+  margin-inline: auto;
+  padding-top: 48px;
+  padding-bottom: 96px;
 }
 
-.settings-panel {
+.settings-page > .back-control {
+  margin-bottom: 28px;
+}
+
+.settings-page > header > p:last-child {
+  max-width: 34rem;
+  line-height: 1.65;
+}
+
+.settings-identity {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin-top: 32px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  padding: 20px 24px;
+}
+
+.settings-identity span {
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+.settings-identity p {
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+
+.settings-section {
+  margin-top: 20px;
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   padding: 24px;
 }
 
-.settings-panel h2 {
-  margin-top: 10px;
+.settings-section-head p {
+  color: var(--color-accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+}
+
+.settings-section-head h2 {
+  margin-top: 8px;
   font-family: var(--font-display);
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 400;
 }
 
-.settings-label,
-.settings-submit p {
+.settings-section-head span {
+  display: block;
+  margin-top: 10px;
+  color: var(--color-text-dim);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.settings-form {
+  margin-top: 24px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 24px;
+}
+
+/* Wide enough that a field's hint stays attached to its own input instead of
+   reading as a caption for the next label. */
+.settings-field + .settings-field {
+  margin-top: 26px;
+}
+
+.settings-field .field-input {
+  margin-top: 8px;
+}
+
+.settings-field small {
+  display: block;
+  margin-top: 6px;
+  color: var(--color-text-dim);
+  font-size: 12px;
+}
+
+.settings-field input:disabled {
+  opacity: 0.6;
+}
+
+.settings-label {
   color: var(--color-text-dim);
   font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0.08em;
 }
 
-.settings-submit {
+/* The notice claims the free space so buttons stay right-aligned whether or
+   not a message is showing. */
+.settings-actions {
   display: flex;
   min-height: 44px;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
 }
 
-.settings-submit .button-primary {
+.settings-actions .settings-notice {
+  margin-right: auto;
+}
+
+/* An action row with no form above it still needs the hairline the forms
+   draw, or the button floats off the section copy. */
+.settings-actions-standalone {
+  border-top: 1px solid var(--color-border);
+  padding-top: 24px;
+}
+
+.settings-actions .button-primary,
+.settings-actions .button-outline {
   min-height: 44px;
   padding-inline: 18px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.settings-notice {
+  color: var(--color-text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+.settings-notice.is-error {
+  color: var(--color-stamp);
 }
 
 .settings-danger {
-  max-width: calc(50% - 12px);
-  margin-top: 24px;
+  margin-top: 20px;
   border-color: color-mix(in srgb, var(--color-stamp) 55%, var(--color-border));
 }
 
-.settings-danger > p:not(:first-child) {
-  margin-top: 10px;
-  color: var(--color-text-dim);
-  font-size: 14px;
-  line-height: 1.65;
+.settings-danger .settings-section-head p {
+  color: var(--color-stamp);
 }
 
 .button-danger {
@@ -2378,12 +2480,37 @@ button.genre-chip.is-active:hover {
     padding-left: 0;
   }
 
-  .settings-grid {
+  .settings-identity {
     grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 18px 20px;
   }
 
-  .settings-danger {
-    max-width: none;
+  .settings-section {
+    padding: 20px;
+  }
+
+  /* Buttons go full width and stack under the notice rather than squeezing
+     onto one row with it. */
+  .settings-actions {
+    flex-wrap: wrap;
+  }
+
+  .settings-actions .settings-notice {
+    flex-basis: 100%;
+    margin-right: 0;
+  }
+
+  .settings-actions .button-primary,
+  .settings-actions .button-outline,
+  .settings-actions .button-danger {
+    flex: 1 1 100%;
+  }
+
+  /* Cancel sits below the destructive button so the last thing under the
+     thumb is not the irreversible one. */
+  .settings-actions .settings-cancel {
+    order: 1;
   }
 
   .profile-lobby-header {
