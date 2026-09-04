@@ -1,7 +1,19 @@
 # Stub
 
+[![CI](https://github.com/alexidrs79/stub/actions/workflows/ci.yml/badge.svg)](https://github.com/alexidrs79/stub/actions/workflows/ci.yml)
+
 Stub is a private movie and television archive built with React, Express,
 PostgreSQL, Prisma, and TMDb.
+
+![The Stub home page](docs/home.jpg)
+
+## Stack
+
+- React 19, TypeScript, Vite, React Router, Tailwind
+- TanStack Query
+- Express 5, Prisma, PostgreSQL
+- JWT in an httpOnly cookie, bcrypt, Helmet, per-route rate limiting
+- Vitest and Testing Library on the client, `node:test` and supertest on the server
 
 ## How the archive is modelled
 
