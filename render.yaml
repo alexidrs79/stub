@@ -1,13 +1,17 @@
+# One Express process serves client/dist and /api. One Postgres database.
+# sync: false vars are typed in the Blueprint form. Do not commit their values.
 services:
   - type: web
     name: stub
     runtime: node
-    plan: starter
+    plan: free
     buildCommand: npm run build
     preDeployCommand: npm run db:migrate:deploy
     startCommand: npm start
     healthCheckPath: /api/ready
     envVars:
+      - key: NODE_VERSION
+        value: "22"
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
@@ -29,6 +33,7 @@ services:
 
 databases:
   - name: stub-db
-    plan: basic-256mb
+    plan: free
     databaseName: stub
     user: stub
+

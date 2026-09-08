@@ -70,22 +70,49 @@ Vite proxies `/api` to the server during development.
 
 ## Production
 
-The production server serves the compiled React application and the API from one
-origin. The included `render.yaml` defines one Render web service and one managed
-PostgreSQL database.
+The production server serves `client/dist` and the API from one Express origin.
+`render.yaml` is a Render Blueprint: one Node 22 web service (`stub`) and one
+Postgres database (`stub-db`). Do not add extra services. The Blueprint runs
+`npm run build`, then `npm run db:migrate:deploy` (Prisma `migrate deploy`,
+never `migrate dev`), then `npm start`. Health check is `GET /api/ready`.
 
-Required environment variables:
+### Deploy with the Blueprint
 
-- `NODE_ENV=production`
-- `DATABASE_URL`
-- `JWT_SECRET` with at least 32 random characters
-- `TMDB_API_KEY`
-- `APP_URL`, the public HTTPS origin with no trailing slash
-- `ALLOWED_ORIGINS`, normally the same value as `APP_URL`
-- `RESEND_API_KEY`
-- `RESEND_FROM`, a verified sender such as `Stub <help@example.com>`
+1. Open the [Render Dashboard](https://dashboard.render.com/).
+2. Click **New** → **Blueprint**.
+3. Click **Connect** on `alexidrs79/stub` (authorize the Render GitHub app first
+   if the repo is missing).
+4. Name the Blueprint, leave the branch as `main`, leave **Blueprint Path** as
+   `render.yaml`.
+5. On the env form, type only the `sync: false` values below. Do not invent
+   `DATABASE_URL` or `JWT_SECRET`.
+6. Click **Deploy Blueprint**.
+7. After the first deploy, open the `stub` service and copy its public URL
+   (for example `https://stub-xxxx.onrender.com`). Set `APP_URL` and
+   `ALLOWED_ORIGINS` to that origin with `https://` and **no trailing slash**.
+   They must be identical. Then **Manual Deploy** → **Deploy latest commit**.
 
-Build, migrate, and start:
+This Blueprint uses Render’s **free** web and Postgres plans. No card is
+required. Free web services sleep after ~15 minutes idle; the first request can
+take about a minute. Free Postgres is small and expires unless you upgrade.
+Render injects `PORT`; Express reads it.
+
+### Environment
+
+| Variable | Who sets it | Value |
+|---|---|---|
+| `NODE_VERSION` | Blueprint | `22` (matches root `package.json` `engines.node`) |
+| `NODE_ENV` | Blueprint | `production` |
+| `DATABASE_URL` | Render | Injected from `stub-db` |
+| `JWT_SECRET` | Render | Generated, ≥32 characters |
+| `PORT` | Render | Injected; do not set it |
+| `APP_URL` | You | Public `https://` origin, no trailing slash |
+| `ALLOWED_ORIGINS` | You | Same string as `APP_URL` |
+| `TMDB_API_KEY` | You | TMDb API key |
+| `RESEND_API_KEY` | You | Resend API key |
+| `RESEND_FROM` | You | Verified sender, e.g. `Stub <help@example.com>` |
+
+Do not commit these values. Local copies stay in `server/.env`.
 
 ```sh
 npm run check
@@ -105,8 +132,8 @@ authorization (no user can read or change another user's lists, diary stamps, or
 archive, and every owner-scoped route refuses an anonymous caller), the
 watch-state transitions under concurrency, and the title cache.
 
-Use `/api/health` for process liveness and `/api/ready` for readiness checks that
-include the database.
+Use `/api/health` for process liveness and `/api/ready` for readiness (includes
+the database).
 
 ## Launch operations
 
