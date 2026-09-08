@@ -73,9 +73,11 @@ Vite proxies `/api` to the server during development.
 The production server serves `client/dist` and the API from one Express origin.
 `render.yaml` is a Render Blueprint: one Node 22 web service (`stub`) and one
 Postgres database (`stub-db`). Do not add extra services. The Blueprint runs
-`npm run build`, then on boot `npm run db:migrate:deploy` (Prisma
-`migrate deploy`, never `migrate dev`) and `npm start`. Free instances cannot
-use a pre-deploy command. Health check is `GET /api/ready`.
+`npm run build:prod` (installs compile tools even though `NODE_ENV` is
+`production`, and skips lint — `npm run check` still gates CI), then on boot
+`npm run db:migrate:deploy` (Prisma `migrate deploy`, never `migrate dev`) and
+`npm start`. Free instances cannot use a pre-deploy command. Health check is
+`GET /api/ready`.
 
 ### Deploy with the Blueprint
 
