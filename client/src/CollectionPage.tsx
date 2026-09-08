@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useState, type FormEvent } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { fetchJson } from "./api"
+import { CollectionTabs } from "./CollectionTabs"
 import { Pager } from "./Pager"
+import { PageState } from "./PageState"
 import { TicketStub } from "./TicketStub"
 import { TvProgressEditor } from "./TvProgressEditor"
 import { setPageMeta } from "./pageMeta"
@@ -35,7 +37,6 @@ const PAGE_SIZE = 24
 const views = [
   {
     id: "watchlist",
-    label: "WATCHLIST",
     eyebrow: "STILL TO SEE",
     heading: "The watchlist",
     blurb: "Titles you saved for later, waiting on a free evening.",
@@ -44,7 +45,6 @@ const views = [
   },
   {
     id: "watching",
-    label: "WATCHING",
     eyebrow: "IN PROGRESS",
     heading: "Currently watching",
     blurb: "Shows you started, with the season and episode you reached.",
@@ -53,7 +53,6 @@ const views = [
   },
   {
     id: "watched",
-    label: "WATCHED",
     eyebrow: "STAMPED",
     heading: "Stamped and filed",
     blurb: "Everything you finished, with the verdict you gave it.",
@@ -62,7 +61,6 @@ const views = [
   },
   {
     id: "favorites",
-    label: "FAVORITES",
     eyebrow: "PINNED",
     heading: "Pinned favorites",
     blurb: "The ones you pinned, whatever score you gave them.",
@@ -179,9 +177,6 @@ export function CollectionPage({
   }
 
   const activeView = views.find((item) => item.id === view) ?? views[0]
-  const currentLabel = listId
-    ? custom.data?.name ?? "Custom list"
-    : activeView.label
   const page = listId
     ? {
         eyebrow: "CUSTOM LIST",
@@ -239,18 +234,7 @@ export function CollectionPage({
       <h1 className="mt-3 font-display text-display-lg font-normal">{page.heading}</h1>
       <p className="mt-4 max-w-2xl text-text-dim">{page.blurb}</p>
 
-      <nav className="collection-tabs" aria-label="Collection views">
-        {views.map((item) => (
-          <Link
-            key={item.id}
-            to={`/collection/${item.id}`}
-            className={!listId && view === item.id ? "is-active" : ""}
-          >
-            {item.label}
-          </Link>
-        ))}
-        <Link to="/diary">DIARY</Link>
-      </nav>
+      <CollectionTabs current={listId ? "list" : activeView.id} />
 
       <div className="collection-layout">
         <aside className="collection-lists">
@@ -289,10 +273,11 @@ export function CollectionPage({
 
         <section className="min-w-0">
           <div className="collection-toolbar">
-            <div>
-              <h2>{currentLabel}</h2>
-              <p>{total} {total === 1 ? "TITLE" : "TITLES"}</p>
-            </div>
+            <p>
+              {pageLoading
+                ? "…"
+                : `${total} ${total === 1 ? "title" : "titles"}`}
+            </p>
             <label>
               <span className="sr-only">Media type</span>
               <select value={filter} onChange={(event) => setFilter(event.target.value as Filter)}>
@@ -374,45 +359,59 @@ export function CollectionPage({
           )}
 
           {pageLoading ? (
-            <div className="collection-state">LOADING THE ARCHIVE</div>
+            <div className="collection-grid" aria-hidden="true">
+              {Array.from({ length: 4 }, (_, index) => (
+                <div key={index} className="collection-ticket">
+                  <div className="ticket skeleton-pulse" />
+                </div>
+              ))}
+            </div>
           ) : pageError ? (
-            <div className="collection-state">
-              <h2>Projection interrupted</h2>
-              <p>We could not load this collection.</p>
-              <button
-                type="button"
-                className="button-primary"
-                onClick={() => {
-                  void collections.refetch()
-                  void archivePage.refetch()
-                  if (listId) void custom.refetch()
-                }}
-              >
-                Retry
-              </button>
-            </div>
+            <PageState
+              heading="Collection unavailable"
+              body="This view could not be loaded."
+              action={
+                <button
+                  type="button"
+                  className="button-primary"
+                  onClick={() => {
+                    void collections.refetch()
+                    void archivePage.refetch()
+                    if (listId) void custom.refetch()
+                  }}
+                >
+                  Retry
+                </button>
+              }
+            />
           ) : visible.length === 0 && filtered ? (
-            <div className="collection-state">
-              <h2>Nothing matches this filter</h2>
-              <p>
-                {filter === "movie"
+            <PageState
+              heading="Nothing matches this filter"
+              body={
+                filter === "movie"
                   ? "No movies in this view yet."
-                  : "No television in this view yet."}
-              </p>
-              <button
-                type="button"
-                className="button-primary"
-                onClick={() => setFilter("all")}
-              >
-                Show all types
-              </button>
-            </div>
+                  : "No television in this view yet."
+              }
+              action={
+                <button
+                  type="button"
+                  className="button-primary"
+                  onClick={() => setFilter("all")}
+                >
+                  Show all types
+                </button>
+              }
+            />
           ) : visible.length === 0 ? (
-            <div className="collection-state">
-              <h2>{page.emptyHeading}</h2>
-              <p>{page.emptyBody}</p>
-              <Link to="/search" className="button-primary">Search titles</Link>
-            </div>
+            <PageState
+              heading={page.emptyHeading}
+              body={page.emptyBody}
+              action={
+                <Link to="/search" className="button-primary">
+                  Search titles
+                </Link>
+              }
+            />
           ) : (
             <div className="collection-grid">
               {visible.map((title) => (

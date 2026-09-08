@@ -3,6 +3,7 @@ import { useEffect, useState, type CSSProperties } from "react"
 import { Link } from "react-router-dom"
 import { fetchJson } from "./api"
 import { Marquee } from "./Marquee"
+import { PageState } from "./PageState"
 import { PosterRail } from "./PosterRail"
 import { genrePath } from "./paths"
 import { TicketStub } from "./TicketStub"
@@ -180,47 +181,50 @@ export function ProfilePage({ displayName, onToggleFavorite }: ProfilePageProps)
       </header>
 
       {loading ? (
-        <p className="mt-12 font-mono text-[11px] tracking-[0.08em] text-text-dim">
-          LOADING
-        </p>
+        <div className="profile-stat-strip mt-12" aria-hidden="true">
+          {[0, 1, 2].map((cell) => (
+            <div key={cell} className="profile-stat">
+              <div className="skeleton-pulse h-3 w-16" />
+              <div className="skeleton-pulse mt-4 h-8 w-12" />
+            </div>
+          ))}
+        </div>
       ) : error ? (
-        <div className="collection-state">
-          <h2>Profile unavailable</h2>
-          <p>Your collection could not be loaded.</p>
-          <button
-            type="button"
-            className="button-primary"
-            onClick={() => void profile.refetch()}
-          >
-            Retry
-          </button>
-        </div>
+        <PageState
+          heading="Profile unavailable"
+          body="Your collection could not be loaded."
+          action={
+            <button
+              type="button"
+              className="button-primary"
+              onClick={() => void profile.refetch()}
+            >
+              Retry
+            </button>
+          }
+        />
       ) : !stats || !counts ? null : counts.watched === 0 && counts.total > 0 ? (
-        <div className="profile-empty">
-          <div className="stub-ghost" aria-hidden="true" />
-          <div>
-            <h2>Your first feature is queued</h2>
-            <p>
-              You have {counts.watching + counts.watchlist}{" "}
-              {counts.watching + counts.watchlist === 1 ? "title" : "titles"} waiting, but
-              nothing stamped yet.
-            </p>
+        <PageState
+          heading="Your first feature is queued"
+          body={`You have ${counts.watching + counts.watchlist} ${
+            counts.watching + counts.watchlist === 1 ? "title" : "titles"
+          } waiting, but nothing stamped yet.`}
+          action={
             <Link to="/collection/watchlist" className="button-primary">
-              OPEN COLLECTION
+              Open collection
             </Link>
-          </div>
-        </div>
+          }
+        />
       ) : counts.watched === 0 ? (
-        <div className="profile-empty">
-          <div className="stub-ghost" aria-hidden="true" />
-          <div>
-            <h2>Your archive is empty</h2>
-            <p>Find a title and claim your first stub.</p>
+        <PageState
+          heading="Your archive is empty"
+          body="Find a title and claim your first stub."
+          action={
             <Link to="/search" className="button-primary">
-              SEARCH TITLES
+              Search titles
             </Link>
-          </div>
-        </div>
+          }
+        />
       ) : (
         <>
           <div className="mt-12">

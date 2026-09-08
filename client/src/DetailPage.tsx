@@ -47,9 +47,9 @@ type DetailPageProps = {
 
 function Fact({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="border-b border-border py-4">
-      <dt className="font-mono text-[11px] tracking-[0.1em] text-text-dim">{label}</dt>
-      <dd className="mt-2 text-[14px] leading-5 text-text">{value}</dd>
+    <div className="detail-fact">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
     </div>
   )
 }
@@ -65,13 +65,10 @@ function ScorePad({
 }) {
   return (
     <div className="verdict-panel">
-      <div className="mb-6 border-b border-border pb-5">
-        <p className="font-mono text-[10px] tracking-[0.14em] text-accent">YOUR SCORE</p>
-        <h2 className="mt-3 font-display text-display-sm font-normal">Your verdict</h2>
-        <p className="mt-2 text-body-sm leading-6 text-text-dim">
-          Your rating and note stay attached to this stub.
-        </p>
-      </div>
+      <h2 className="font-display text-display-sm font-normal">Your verdict</h2>
+      <p className="mt-2 mb-6 text-body-sm leading-6 text-text-dim">
+        Your rating and note stay attached to this stub.
+      </p>
       <VerdictForm
         initialScore={score}
         initialNote={note}
@@ -205,10 +202,19 @@ export function DetailPage({
 
   if (!title) {
     return (
-      <main className="py-24">
-        <p className="font-mono text-[11px] tracking-[0.08em] text-text-dim">
-          LOADING
-        </p>
+      <main className="pb-24 pt-8" aria-busy="true">
+        <div className="back-control mt-6 invisible" aria-hidden="true">
+          BACK
+        </div>
+        <div className="skeleton-pulse mt-5 -mx-4 h-[340px] sm:-mx-8 lg:h-[420px]" />
+        <div className="mt-12 grid gap-10 lg:grid-cols-[214px_1fr] lg:gap-12">
+          <div className="skeleton-pulse poster max-w-[214px]" />
+          <div>
+            <div className="skeleton-pulse h-4 max-w-xl" />
+            <div className="skeleton-pulse mt-3 h-4 max-w-lg" />
+            <div className="skeleton-pulse mt-3 h-4 max-w-md" />
+          </div>
+        </div>
       </main>
     )
   }
@@ -471,7 +477,7 @@ export function DetailPage({
         <div className="min-w-0">
           <p className="max-w-[640px] leading-7 text-text-dim">{title.synopsis}</p>
 
-          <dl className="mt-10 grid border-t border-border sm:grid-cols-2 sm:gap-x-12">
+          <dl className="detail-facts">
             <Fact label="RELEASED" value={releasedOn ?? "—"} />
             <Fact label="RUNTIME" value={title.runtime} />
             <Fact

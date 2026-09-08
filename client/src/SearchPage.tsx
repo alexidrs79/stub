@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { fetchJson } from "./api"
 import { MediaImage } from "./MediaImage"
+import { PageState } from "./PageState"
 import { titlePath } from "./paths"
 import { PosterRail } from "./PosterRail"
 import type { ArchiveEntry, MediaType, SearchHit, TitleDetail } from "./title"
@@ -148,21 +149,35 @@ export function SearchPage({ archive, onSave, onRemove }: SearchPageProps) {
         </div>
       )}
       {search.isError && (
-        <div className="rail-state mt-16">
-          <p>SEARCH IS UNAVAILABLE. TRY AGAIN.</p>
-          <button type="button" onClick={() => void search.refetch()}>
-            RETRY
-          </button>
-        </div>
+        <PageState
+          heading="Search unavailable"
+          body="Try that query again."
+          action={
+            <button type="button" className="button-primary" onClick={() => void search.refetch()}>
+              Retry
+            </button>
+          }
+        />
       )}
       {ready && search.isLoading && (
-        <div className="rail-state mt-16" role="status">
-          <p>SEARCHING THE PROGRAMME</p>
+        <div className="mt-12 divide-y divide-border border-y border-border" aria-hidden="true">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div
+              key={index}
+              className="search-result grid grid-cols-[80px_1fr] items-center gap-4 py-5 sm:grid-cols-[96px_1fr]"
+            >
+              <div className="skeleton-pulse poster w-20 sm:w-24" />
+              <div className="min-w-0">
+                <div className="skeleton-pulse h-6 max-w-xs" />
+                <div className="skeleton-pulse mt-3 h-3 max-w-48" />
+              </div>
+            </div>
+          ))}
         </div>
       )}
       {ready && search.isSuccess && results.length === 0 && (
         <p className="mt-16 text-text-dim">
-          Nothing matched that — try another title.
+          Nothing matched that. Try another title.
         </p>
       )}
       {results.length > 0 && (

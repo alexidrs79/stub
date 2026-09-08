@@ -53,12 +53,12 @@ function build() {
   }
 
   const appOrigin = normalizeOrigin(
-    process.env.APP_URL ?? "http://localhost:5173",
+    process.env.APP_URL ?? "http://localhost:5273",
     "APP_URL",
     production,
   )
   const allowedOrigins = new Set(
-    (process.env.ALLOWED_ORIGINS ?? process.env.APP_URL ?? "http://localhost:5173")
+    (process.env.ALLOWED_ORIGINS ?? process.env.APP_URL ?? "http://localhost:5273")
       .split(",")
       .map((origin) => origin.trim())
       .filter(Boolean)
@@ -67,7 +67,7 @@ function build() {
 
   return {
     production,
-    port: Number(process.env.PORT) || 3001,
+    port: Number(process.env.PORT) || 3101,
     appOrigin,
     allowedOrigins,
     /// HSTS and the HTTPS redirect only make sense once the public origin is

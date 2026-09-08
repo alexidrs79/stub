@@ -139,10 +139,17 @@ export function GenrePage({ archive, signedIn, onSave }: GenrePageProps) {
 
   if (!genre.data) {
     return (
-      <main className="py-24">
-        <p className="font-mono text-[11px] tracking-[0.08em] text-text-dim">
-          LOADING
-        </p>
+      <main className="pb-24 pt-12" aria-busy="true">
+        <div className="back-control invisible" aria-hidden="true">
+          BACK
+        </div>
+        <div className="skeleton-pulse mt-8 h-10 w-56" />
+        <div className="skeleton-pulse mt-4 h-3 w-40" />
+        <div className="genre-posters mt-16">
+          {Array.from({ length: 8 }, (_, index) => (
+            <div key={index} className="skeleton-pulse poster" />
+          ))}
+        </div>
       </main>
     )
   }
@@ -193,7 +200,7 @@ export function GenrePage({ archive, signedIn, onSave }: GenrePageProps) {
 
       {empty && (
         <div className="rail-state mt-16">
-          <p>NO TITLES ON THIS REEL</p>
+          <p>No titles on this reel.</p>
         </div>
       )}
 

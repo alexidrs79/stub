@@ -84,7 +84,7 @@ function StubRack({
             <h2 className="font-display text-display-sm font-normal">{heading}</h2>
           </div>
           <EmptyStubs>
-            Nothing here yet —{" "}
+            Nothing here yet.{" "}
             <Link to="/search" className="text-accent hover:underline">
               search for something to add.
             </Link>

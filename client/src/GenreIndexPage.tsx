@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useEffect } from "react"
 import { Link } from "react-router-dom"
 import { fetchJson } from "./api"
+import { PageState } from "./PageState"
 import { setPageMeta } from "./pageMeta"
 import { genrePath } from "./paths"
 import type { GenreInfo } from "./title"
@@ -37,17 +38,22 @@ export function GenreIndexPage() {
       </p>
 
       {genres.isError && (
-        <div className="rail-state mt-16">
-          <p>THE PROGRAMME IS UNAVAILABLE. TRY AGAIN.</p>
-          <button type="button" onClick={() => void genres.refetch()}>
-            RETRY
-          </button>
-        </div>
+        <PageState
+          heading="Programme unavailable"
+          body="The genre list could not be loaded."
+          action={
+            <button type="button" className="button-primary" onClick={() => void genres.refetch()}>
+              Retry
+            </button>
+          }
+        />
       )}
       {genres.isLoading && (
-        <p className="mt-16 font-mono text-[11px] tracking-[0.08em] text-text-dim">
-          LOADING
-        </p>
+        <div className="genre-directory" aria-hidden="true">
+          {Array.from({ length: 8 }, (_, index) => (
+            <span key={index} className="skeleton-pulse" />
+          ))}
+        </div>
       )}
       {genres.data && (
         <div className="genre-directory">

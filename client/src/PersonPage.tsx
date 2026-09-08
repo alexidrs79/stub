@@ -137,10 +137,18 @@ export function PersonPage({
 
   if (!person.data) {
     return (
-      <main className="py-24">
-        <p className="font-mono text-[11px] tracking-[0.08em] text-text-dim">
-          LOADING
-        </p>
+      <main className="pb-24 pt-8" aria-busy="true">
+        <div className="back-control mt-6 invisible" aria-hidden="true">
+          BACK
+        </div>
+        <div className="person-hero mt-5">
+          <div className="skeleton-pulse person-portrait" />
+          <div>
+            <div className="skeleton-pulse h-10 max-w-sm" />
+            <div className="skeleton-pulse mt-4 h-4 max-w-md" />
+            <div className="skeleton-pulse mt-3 h-4 max-w-lg" />
+          </div>
+        </div>
       </main>
     )
   }

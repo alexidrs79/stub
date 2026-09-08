@@ -4,7 +4,9 @@ import { Link } from "react-router-dom"
 import { fetchJson } from "./api"
 import { localDateKey } from "./dates"
 import { MediaImage } from "./MediaImage"
+import { CollectionTabs } from "./CollectionTabs"
 import { Pager } from "./Pager"
+import { PageState } from "./PageState"
 import { titlePath } from "./paths"
 import type { DiaryEvent, DiaryPageResponse } from "./title"
 import { ARCHIVE_INDEX_KEY, invalidatePagedViews } from "./useArchive"
@@ -137,30 +139,45 @@ export function DiaryPage() {
         </label>
       </div>
 
-      <nav className="collection-tabs" aria-label="Collection views">
-        <Link to="/collection/watchlist">WATCHLIST</Link>
-        <Link to="/collection/watching">WATCHING</Link>
-        <Link to="/collection/watched">WATCHED</Link>
-        <Link to="/collection/favorites">FAVORITES</Link>
-        <Link to="/diary" className="is-active">DIARY</Link>
-      </nav>
+      <CollectionTabs current="diary" />
 
       {diary.isLoading ? (
-        <div className="collection-state">OPENING THE LOG</div>
+        <div className="diary-days" aria-hidden="true">
+          {[0, 1, 2].map((row) => (
+            <section key={row} className="diary-day">
+              <h2>
+                <span className="skeleton-pulse diary-skel-label" />
+              </h2>
+              <article className="diary-entry">
+                <span className="skeleton-pulse poster w-16" />
+                <div className="min-w-0">
+                  <span className="skeleton-pulse diary-skel-title" />
+                  <span className="skeleton-pulse diary-skel-meta" />
+                </div>
+              </article>
+            </section>
+          ))}
+        </div>
       ) : diary.isError ? (
-        <div className="collection-state">
-          <h2>Diary unavailable</h2>
-          <p>Your stamps are safe. Try opening the log again.</p>
-          <button type="button" className="button-primary" onClick={() => diary.refetch()}>
-            Retry
-          </button>
-        </div>
+        <PageState
+          heading="Diary unavailable"
+          body="Your stamps are safe. Try opening the log again."
+          action={
+            <button type="button" className="button-primary" onClick={() => diary.refetch()}>
+              Retry
+            </button>
+          }
+        />
       ) : groups.size === 0 ? (
-        <div className="collection-state">
-          <h2>No stamps this month</h2>
-          <p>Stamp a title when you finish watching it.</p>
-          <Link to="/collection/watchlist" className="button-primary">Open watchlist</Link>
-        </div>
+        <PageState
+          heading="No stamps this month"
+          body="Stamp a title when you finish watching it."
+          action={
+            <Link to="/collection/watchlist" className="button-primary">
+              Open watchlist
+            </Link>
+          }
+        />
       ) : (
         <div className="diary-days">
           {[...groups.entries()].map(([date, events]) => (

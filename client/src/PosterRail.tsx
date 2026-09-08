@@ -114,8 +114,12 @@ export function PosterRail({
             <h2 className="font-display text-display-sm font-normal">{title}</h2>
           </div>
           <div className="rail-state">
-            <p>THIS PART OF THE PROGRAMME IS UNAVAILABLE</p>
-            {onRetry && <button type="button" onClick={onRetry}>RETRY</button>}
+            <p>This reel could not be loaded.</p>
+            {onRetry && (
+              <button type="button" onClick={onRetry}>
+                Retry
+              </button>
+            )}
           </div>
         </>
       ) : loading ? (
@@ -133,7 +137,7 @@ export function PosterRail({
             <h2 className="font-display text-display-sm font-normal">{title}</h2>
           </div>
           <div className="rail-state">
-            <p>NO TITLES ON THIS REEL</p>
+            <p>No titles on this reel.</p>
           </div>
         </>
       ) : (
