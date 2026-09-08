@@ -6,8 +6,9 @@ services:
     runtime: node
     plan: free
     buildCommand: npm run build
-    preDeployCommand: npm run db:migrate:deploy
-    startCommand: npm start
+    # Free instances cannot use preDeployCommand. migrate deploy is a no-op
+    # when the schema is already current, including after a sleep wake.
+    startCommand: npm run db:migrate:deploy && npm start
     healthCheckPath: /api/ready
     envVars:
       - key: NODE_VERSION

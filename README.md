@@ -73,8 +73,9 @@ Vite proxies `/api` to the server during development.
 The production server serves `client/dist` and the API from one Express origin.
 `render.yaml` is a Render Blueprint: one Node 22 web service (`stub`) and one
 Postgres database (`stub-db`). Do not add extra services. The Blueprint runs
-`npm run build`, then `npm run db:migrate:deploy` (Prisma `migrate deploy`,
-never `migrate dev`), then `npm start`. Health check is `GET /api/ready`.
+`npm run build`, then on boot `npm run db:migrate:deploy` (Prisma
+`migrate deploy`, never `migrate dev`) and `npm start`. Free instances cannot
+use a pre-deploy command. Health check is `GET /api/ready`.
 
 ### Deploy with the Blueprint
 
@@ -141,7 +142,8 @@ the database).
   restore before launch.
 - Attach the custom domain in Render, confirm its managed TLS certificate is
   active, and set both URL variables to the final `https://` origin.
-- Run `prisma migrate deploy` as a pre-deploy command, never `migrate dev`.
+- Run `prisma migrate deploy` on boot (free plan) or as a pre-deploy command
+  on a paid plan. Never `migrate dev` in production.
 - Rotate a compromised TMDb or Resend key in the provider, then redeploy.
 - To rotate `JWT_SECRET`, replace it and redeploy; all users will be signed out.
 - Review structured request logs for repeated `401`, `403`, `429`, and `500`
