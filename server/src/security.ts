@@ -88,8 +88,15 @@ export function applySecurity(app: Express, config: AppConfig) {
   app.use((req, res, next) => {
     const origin = req.get("origin")
     if (origin && !allowedOrigins.has(origin)) {
-      res.status(403).json({ error: "Origin not allowed." })
-      return
+      // Module scripts and other same-host subresources send Origin even when
+      // APP_URL still points at a placeholder onrender.com hostname.
+      const host = req.get("host")
+      const requestOrigin =
+        host && `${req.protocol}://${host}`.replace(/\/$/, "")
+      if (origin !== requestOrigin) {
+        res.status(403).json({ error: "Origin not allowed." })
+        return
+      }
     }
     if (
       req.get("sec-fetch-site") === "cross-site" &&
