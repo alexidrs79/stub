@@ -2,8 +2,13 @@
 
 [![CI](https://github.com/alexidrs79/stub/actions/workflows/ci.yml/badge.svg)](https://github.com/alexidrs79/stub/actions/workflows/ci.yml)
 
+**Live:** [https://stub-du13.onrender.com](https://stub-du13.onrender.com)
+
 Stub is a private movie and television archive built with React, Express,
 PostgreSQL, Prisma, and TMDb.
+
+> Free Render instances sleep after idle time. The first visit after sleep can
+> take about a minute.
 
 ![The Stub home page](docs/home.jpg)
 
@@ -91,7 +96,7 @@ Postgres database (`stub-db`). Do not add extra services. The Blueprint runs
    `DATABASE_URL` or `JWT_SECRET`.
 6. Click **Deploy Blueprint**.
 7. After the first deploy, open the `stub` service and copy its public URL
-   (for example `https://stub-xxxx.onrender.com`). Set `APP_URL` and
+   (currently `https://stub-du13.onrender.com`). Set `APP_URL` and
    `ALLOWED_ORIGINS` to that origin with `https://` and **no trailing slash**.
    They must be identical. Then **Manual Deploy** → **Deploy latest commit**.
 
