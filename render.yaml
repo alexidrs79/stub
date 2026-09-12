@@ -6,9 +6,9 @@ services:
     runtime: node
     plan: free
     buildCommand: npm run build:prod
-    # Free instances cannot use preDeployCommand. migrate deploy is a no-op
-    # when the schema is already current, including after a sleep wake.
-    startCommand: npm run db:migrate:boot && npm start
+    # Free instances cannot use preDeployCommand. Do not block listen on
+    # migrate: a P3005/hang leaves /api/ready down and the free instance dead.
+    startCommand: npm start
     healthCheckPath: /api/ready
     envVars:
       - key: NODE_VERSION

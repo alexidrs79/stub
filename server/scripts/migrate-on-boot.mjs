@@ -1,15 +1,22 @@
 import { spawnSync } from "node:child_process"
-import { readdirSync } from "node:fs"
+import { existsSync, readdirSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
+const prismaCli = join(root, "node_modules/prisma/build/index.js")
+const migrateTimeoutMs = 60_000
 
 function runPrisma(args) {
-  return spawnSync("npx", ["prisma", ...args], {
+  const command = existsSync(prismaCli) ? process.execPath : "npx"
+  const argv = existsSync(prismaCli) ? [prismaCli, ...args] : ["prisma", ...args]
+  return spawnSync(command, argv, {
     cwd: root,
     encoding: "utf8",
+    env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
+    timeout: migrateTimeoutMs,
+    killSignal: "SIGKILL",
   })
 }
 
@@ -18,8 +25,14 @@ function logOutput(result) {
   if (result.stderr) process.stderr.write(result.stderr)
 }
 
+console.log("Applying production Prisma migrations.")
 const deploy = runPrisma(["migrate", "deploy"])
 logOutput(deploy)
+if (deploy.error) console.error(deploy.error)
+if (deploy.signal) {
+  console.error(`prisma migrate deploy stopped (${deploy.signal}).`)
+  process.exit(1)
+}
 if (deploy.status === 0) process.exit(0)
 
 const output = `${deploy.stdout ?? ""}${deploy.stderr ?? ""}`

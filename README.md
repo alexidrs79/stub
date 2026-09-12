@@ -79,11 +79,12 @@ The production server serves `client/dist` and the API from one Express origin.
 `render.yaml` is a Render Blueprint: one Node 22 web service (`stub`) and one
 Postgres database (`stub-db`). Do not add extra services. The Blueprint runs
 `npm run build:prod` (installs compile tools even though `NODE_ENV` is
-`production`, and skips lint — `npm run check` still gates CI), then on boot
-`npm run db:migrate:boot` (Prisma `migrate deploy`, or a one-time baseline if
-the production schema already exists without `_prisma_migrations`) and
-`npm start`. Never `migrate dev` in production. Free instances cannot use a
-pre-deploy command. Health check is `GET /api/ready`.
+`production`, and skips lint — `npm run check` still gates CI), then
+`npm start`. Do not put `migrate deploy` in front of start: Prisma P3005 or a
+hung migrate leaves `/api/ready` down and the free instance never comes up.
+Baseline a non-empty database with `npm run db:migrate:boot` from Render Shell
+once, then leave boot as `npm start`. Never `migrate dev` in production. Free
+instances cannot use a pre-deploy command. Health check is `GET /api/ready`.
 
 ### Deploy with the Blueprint
 
@@ -150,8 +151,9 @@ the database).
   restore before launch.
 - Attach the custom domain in Render, confirm its managed TLS certificate is
   active, and set both URL variables to the final `https://` origin.
-- Run `npm run db:migrate:boot` on boot (free plan) or `migrate deploy` as a
-  pre-deploy command on a paid plan. Never `migrate dev` in production.
+- Keep start as `npm start`. Run `npm run db:migrate:boot` from Render Shell
+  when the production schema needs a one-time baseline, or `migrate deploy` as
+  a paid-plan pre-deploy command. Never `migrate dev` in production.
 - Rotate a compromised TMDb or Resend key in the provider, then redeploy.
 - To rotate `JWT_SECRET`, replace it and redeploy; all users will be signed out.
 - Review structured request logs for repeated `401`, `403`, `429`, and `500`
