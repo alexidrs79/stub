@@ -12,6 +12,7 @@
     "build:prod": "npm --prefix client ci --include=dev && npm --prefix server ci --include=dev && npm --prefix client run build && npm --prefix server run build",
     "start": "npm --prefix server run start",
     "db:migrate:deploy": "npm --prefix server run db:migrate:deploy",
+    "db:migrate:boot": "npm --prefix server run db:migrate:boot",
     "test": "npm --prefix client run test && npm --prefix server run test",
     "check": "npm --prefix client run lint && npm --prefix client run build && npm --prefix server run lint && npm --prefix server run build && npm test"
   }

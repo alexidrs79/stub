@@ -80,9 +80,10 @@ The production server serves `client/dist` and the API from one Express origin.
 Postgres database (`stub-db`). Do not add extra services. The Blueprint runs
 `npm run build:prod` (installs compile tools even though `NODE_ENV` is
 `production`, and skips lint — `npm run check` still gates CI), then on boot
-`npm run db:migrate:deploy` (Prisma `migrate deploy`, never `migrate dev`) and
-`npm start`. Free instances cannot use a pre-deploy command. Health check is
-`GET /api/ready`.
+`npm run db:migrate:boot` (Prisma `migrate deploy`, or a one-time baseline if
+the production schema already exists without `_prisma_migrations`) and
+`npm start`. Never `migrate dev` in production. Free instances cannot use a
+pre-deploy command. Health check is `GET /api/ready`.
 
 ### Deploy with the Blueprint
 
@@ -149,8 +150,8 @@ the database).
   restore before launch.
 - Attach the custom domain in Render, confirm its managed TLS certificate is
   active, and set both URL variables to the final `https://` origin.
-- Run `prisma migrate deploy` on boot (free plan) or as a pre-deploy command
-  on a paid plan. Never `migrate dev` in production.
+- Run `npm run db:migrate:boot` on boot (free plan) or `migrate deploy` as a
+  pre-deploy command on a paid plan. Never `migrate dev` in production.
 - Rotate a compromised TMDb or Resend key in the provider, then redeploy.
 - To rotate `JWT_SECRET`, replace it and redeploy; all users will be signed out.
 - Review structured request logs for repeated `401`, `403`, `429`, and `500`
